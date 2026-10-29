@@ -86,7 +86,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.onSwipeDown = { [weak self] in
             // 帯を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
             self?.commitAll()
-            self?.dismissAnimated()
+            self?.dismissKeyboard()
         }
 
         composer.userWords = dictionary.words
@@ -836,21 +836,6 @@ final class KeyboardViewController: UIInputViewController {
         })
     }
 
-    /// キーボードを閉じる。下へスライドしながら消えてから閉じる
-    private func dismissAnimated() {
-        UIView.animate(withDuration: 0.18, delay: 0, options: .curveEaseIn, animations: {
-            self.view.transform = CGAffineTransform(translationX: 0, y: self.view.bounds.height * 0.35)
-            self.view.alpha = 0
-        }, completion: { _ in
-            self.dismissKeyboard()
-            // 閉じられなかったときのために、少しあとで元に戻す（次に開いたときも元の位置にする）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                self.view.transform = .identity
-                self.view.alpha = 1
-            }
-        })
-    }
-
     /// 「@」のあとに出す、よく使うメールのドメイン
     private var domainCandidates: [String] = []
     /// 括弧を対で入れた直後の、閉じ括弧
@@ -907,7 +892,7 @@ final class KeyboardViewController: UIInputViewController {
             }, onSwipeDown: { [weak self] in
                 // 真ん中を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
                 self?.commitAll()
-                self?.dismissAnimated()
+                self?.dismissKeyboard()
             }))
             host.view.backgroundColor = .clear
             addChild(host)
