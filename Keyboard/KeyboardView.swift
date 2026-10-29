@@ -194,6 +194,12 @@ final class KeyboardView: UIView {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         let pressedCenters = active.values.map { $0.key.center }
         let cursorMode = active.values.contains { $0.cursorMode }
+        // フリック中（空白のカーソル移動以外）は、改行・確定キーを「取消」にする（そこで離すと何も入らない）
+        let cancelHint = active.values.contains { a in
+            if a.cursorMode || a.repeated || a.key.def.isNumberPad { return false }
+            if case .newline = a.key.def.action { return false }
+            return direction(a.key, from: a.start, to: a.current) != .tap
+        }
 
         for k in keys {
             let isPressed = pressedCenters.contains(k.center)
@@ -222,6 +228,8 @@ final class KeyboardView: UIView {
             if uppercase, mode == .qwerty, k.def.id.hasPrefix("q_") { label = label.uppercased() }
             if case .shift = k.def.action { label = capsLock ? "⇪" : (uppercase ? "⬆︎" : "⇧") }
             if cursorMode, case .space = k.def.action { label = "◀ ▲▼ ▶" }
+            var cancelKey = false
+            if cancelHint, case .newline = k.def.action { label = "取消"; cancelKey = true }
             var color = isPressed ? Palette.pressedText : (accent ? UIColor.white : Palette.text)
             if disabledIDs.contains(k.def.id) { color = color.withAlphaComponent(0.35) }
             var symbolName = k.def.symbol
@@ -229,6 +237,7 @@ final class KeyboardView: UIView {
             if case .shift = k.def.action { symbolName = capsLock ? "capslock.fill" : (uppercase ? "shift.fill" : "shift") }
             // 普通の改行のときは、リターンの記号にする（確定・検索などは文字のまま）
             if case .newline = k.def.action, label == "改行" { symbolName = "return" }
+            if cancelKey { symbolName = nil }
             if let symbol = symbolName {
                 drawSymbol(symbol, center: k.center, rotation: textRotation(k),
                            pointSize: m * 0.36 * CGFloat(settings.labelScale), color: color, in: ctx)
@@ -586,6 +595,15 @@ final class KeyboardView: UIView {
             }
             if !a.repeated && !a.cursorMode {
                 let end = t.location(in: self)
+                // フリックして改行・確定キーの上で離したら、キャンセル（何も入れない）
+                if let over = hit(end), case .newline = over.def.action {
+                    var startsOnNewline = false
+                    if case .newline = a.key.def.action { startsOnNewline = true }
+                    if !startsOnNewline {
+                        lastFlick = nil
+                        continue
+                    }
+                }
                 let dir = direction(a.key, from: a.start, to: end)
                 if dir == .tap, a.key.def.isCharacter { learnOffset(a.start, a.key) }
                 if a.key.def.isCharacter {
