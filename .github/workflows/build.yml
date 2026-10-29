@@ -19,19 +19,7 @@ jobs:
 
       - name: Inspect (Xcode version and Zenzai model files)
         continue-on-error: true
-        run: |
-          echo "::notice title=xcode::$(xcodebuild -version | tr '\n' ' ')"
-          echo "::notice title=xcodegen::$(brew info xcodegen --json | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["versions"]["stable"])')"
-          for m in zenz-v3-small-gguf zenz-v3.1-small-gguf zenz-v3-xsmall-gguf zenz-v3.1-xsmall-gguf; do
-            curl -s "https://huggingface.co/api/models/Miwa-Keita/$m?blobs=true" | python3 -c "
-import sys,json
-try:
-    d=json.load(sys.stdin)
-    print('::notice title=$m::' + ', '.join('%s=%.1fMB'%(f['rfilename'],(f.get('size') or 0)/1e6) for f in d['siblings']))
-except Exception as e:
-    print('::notice title=$m::none (%s)'%e)
-"
-          done
+        run: python3 .github/scripts/inspect.py
 
       - name: Install XcodeGen
         run: brew install xcodegen
