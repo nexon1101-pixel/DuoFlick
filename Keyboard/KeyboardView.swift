@@ -189,11 +189,11 @@ final class KeyboardView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        let pressedIDs = Set(active.values.map { $0.key.def.id })
+        let pressedCenters = active.values.map { $0.key.center }
         let cursorMode = active.values.contains { $0.cursorMode }
 
         for k in keys {
-            let isPressed = pressedIDs.contains(k.def.id)
+            let isPressed = pressedCenters.contains(k.center)
             let accent = accentIDs.contains(k.def.id) && !disabledIDs.contains(k.def.id)
             let fill: UIColor = isPressed ? Palette.pressed
                 : (accent ? Palette.accent : (k.def.isCharacter ? Palette.key : Palette.functionKey))
