@@ -123,6 +123,7 @@ final class KeyboardViewController: UIInputViewController {
     override func textDidChange(_ textInput: (any UITextInput)?) {
         super.textDidChange(textInput)
         applyKeyboardType()
+        updateKeyLabels()
     }
 
     /// 入力欄の種類に合わせて、最初の文字種を選ぶ
@@ -177,10 +178,25 @@ final class KeyboardViewController: UIInputViewController {
         }
         let proxy = textDocumentProxy
         if case .undo = def.action {
+            // 続けてタップの途中なら、ひとつ前の文字に戻す（iOS標準の↺と同じ）
+            if let t = toggle, let chars = t.def.flickChars, applyToggle(t.def, chars, step: -1) {
+                return
+            }
             undoCommit()
             return
         }
+        if case .newline = def.action, keyboardView.disabledIDs.contains(def.id) { return }
         lastCommit = nil
+
+        // 同じキーを続けてタップしたら、文字を切り替える
+        if dir == .tap, let chars = def.flickChars, let t = toggle, t.def.id == def.id,
+           Date().timeIntervalSince(t.time) < 1.2, applyToggle(def, chars, step: 1) {
+            return
+        }
+        toggle = nil
+        if dir == .tap, model.settings.toggleInput, let chars = def.flickChars {
+            toggle = ToggleState(def: def, index: 0, time: Date(), output: chars[0])
+        }
 
         switch def.action {
         case .kana(let chars):
@@ -199,7 +215,9 @@ final class KeyboardViewController: UIInputViewController {
         case .direct(let chars):
             commitAll()
             composer.clearPredictions()
-            proxy.insertText(pick(chars, dir))
+            let s = autoCapitalized(pick(chars, dir))
+            if toggle != nil { toggle?.output = s }
+            proxy.insertText(s)
             refreshBar()
         case .modifier:
             if !composer.isEmpty {
@@ -264,6 +282,86 @@ final class KeyboardViewController: UIInputViewController {
         case .undo:
             break
         }
+    }
+
+    // MARK: - 続けてタップで切り替え（トグル入力）
+
+    private struct ToggleState {
+        let def: KeyDef
+        var index: Int
+        var time: Date
+        /// 直前に入れた文字（大文字にした場合も含め、入力欄と照らし合わせる）
+        var output: String
+    }
+    private var toggle: ToggleState?
+
+    /// 直前に入れた文字を、同じキーの次（step = -1 なら前）の文字に置き換える
+    @discardableResult
+    private func applyToggle(_ def: KeyDef, _ chars: [String], step: Int) -> Bool {
+        guard var t = toggle else { return false }
+        let cycle = chars.filter { !$0.isEmpty }
+        guard cycle.count > 1 else { return false }
+        let i = ((t.index + step) % cycle.count + cycle.count) % cycle.count
+        var next = cycle[i]
+        let prev = t.output
+        if let p = prev.first, p.isUppercase, p.isASCII { next = next.uppercased() }
+        let proxy = textDocumentProxy
+
+        if !composer.isEmpty, composer.reading.hasSuffix(prev) {
+            if isPunctuation(next) {
+                composer.deleteBackward()
+                commitAll()
+                composer.clearPredictions()
+                proxy.insertText(next)
+                refreshBar()
+            } else {
+                _ = composer.replaceLast(with: next)
+                updateComposition()
+            }
+        } else if composer.isEmpty, proxy.documentContextBeforeInput?.hasSuffix(prev) == true {
+            proxy.deleteBackward()
+            if case .kana = def.action, !isPunctuation(next) {
+                composer.clearPredictions()
+                composer.insert(next)
+                updateComposition()
+            } else {
+                proxy.insertText(next)
+                refreshBar()
+            }
+        } else {
+            toggle = nil
+            return false
+        }
+        t.index = i
+        t.time = Date()
+        t.output = next
+        toggle = t
+        return true
+    }
+
+    /// 英字モードで、入力欄の設定に合わせて文頭などを大文字にする
+    private func autoCapitalized(_ s: String) -> String {
+        guard mode == .alpha, s.count == 1, let c = s.first, c.isLetter, c.isLowercase else { return s }
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        let upper: Bool
+        switch textDocumentProxy.autocapitalizationType ?? .none {
+        case .allCharacters:
+            upper = true
+        case .words:
+            upper = before.isEmpty || before.last!.isWhitespace
+        case .sentences:
+            if before.isEmpty || before.last == "\n" {
+                upper = true
+            } else if before.last!.isWhitespace {
+                let t = before.trimmingCharacters(in: .whitespaces)
+                upper = t.isEmpty || [".", "!", "?", "\n"].contains(t.last!)
+            } else {
+                upper = false
+            }
+        default:
+            upper = false
+        }
+        return upper ? s.uppercased() : s
     }
 
     private func pick(_ chars: [String], _ dir: FlickDirection) -> String {
@@ -433,6 +531,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 入力中は変換候補、確定直後は予測、それ以外は何も出さない
     private func refreshBar() {
+        updateKeyLabels()
         if !composer.isEmpty {
             candidateBar.show(composer.candidateTexts, selected: composer.selectedIndex)
         } else {
@@ -442,6 +541,42 @@ final class KeyboardViewController: UIInputViewController {
         let canExpand = !composer.isEmpty && !composer.candidateTexts.isEmpty
         if !canExpand { hideCandidateList() }
         candidateBar.setExpand(visible: canExpand, expanded: listHost != nil)
+    }
+
+    /// 改行キー・空白キーの表示をiOS標準に合わせる（入力中は「確定」「次候補」）
+    private func updateKeyLabels() {
+        let proxy = textDocumentProxy
+        var labels: [String: String] = [:]
+        var accent: Set<String> = []
+        var disabled: Set<String> = []
+        if !composer.isEmpty {
+            labels["newline"] = "確定"
+            accent.insert("newline")
+            if mode == .kana { labels["space"] = "次候補" }
+        } else {
+            let type = proxy.returnKeyType ?? .default
+            let name: String
+            switch type {
+            case .go: name = "開く"
+            case .google, .yahoo, .search: name = "検索"
+            case .join: name = "参加"
+            case .next: name = "次へ"
+            case .route: name = "経路"
+            case .send: name = "送信"
+            case .done: name = "完了"
+            case .emergencyCall: name = "緊急"
+            case .continue: name = "続ける"
+            default: name = "改行"
+            }
+            labels["newline"] = name
+            if type != .default { accent.insert("newline") }
+            if proxy.enablesReturnKeyAutomatically == true, !proxy.hasText {
+                disabled.insert("newline")
+            }
+        }
+        keyboardView.labelOverrides = labels
+        keyboardView.accentIDs = accent
+        keyboardView.disabledIDs = disabled
     }
 
     // MARK: - 候補の一覧

@@ -36,6 +36,8 @@ enum Palette {
     static let pressed = dynamic(0x2A52C4, 0x8FA7FF)
     static let text = dynamic(0x111318, 0xFFFFFF)
     static let pressedText = dynamic(0xFFFFFF, 0x0C1122)
+    /// 確定・検索などのキー（iOS標準と同じ青）
+    static let accent = dynamic(0x007AFF, 0x0A84FF)
     static let shadow = dynamic(0x898A8D, 0x111214)
     static let guide = dynamic(0xFFFFFF, 0x3A3B40)
 }
@@ -51,6 +53,18 @@ extension UIColor {
 
 /// キーの描画とタッチ判定をまとめて行うビュー。扇形のくさび形キーも描けるよう、自前で描画する。
 final class KeyboardView: UIView {
+    /// 状態で変わるキーの表示（改行→確定、空白→次候補など）
+    var labelOverrides: [String: String] = [:] {
+        didSet { if labelOverrides != oldValue { setNeedsDisplay() } }
+    }
+    /// 青く目立たせるキー（確定・検索など）
+    var accentIDs: Set<String> = [] {
+        didSet { if accentIDs != oldValue { setNeedsDisplay() } }
+    }
+    /// 押せないキー（文字が空のときの送信など）
+    var disabledIDs: Set<String> = [] {
+        didSet { if disabledIDs != oldValue { setNeedsDisplay() } }
+    }
     var settings = KeyboardSettings() {
         didSet {
             Palette.lightTheme = KeyTheme.find(settings.themeLight)
@@ -138,7 +152,9 @@ final class KeyboardView: UIView {
 
         for k in keys {
             let isPressed = pressedIDs.contains(k.def.id)
-            let fill: UIColor = isPressed ? Palette.pressed : (k.def.isCharacter ? Palette.key : Palette.functionKey)
+            let accent = accentIDs.contains(k.def.id) && !disabledIDs.contains(k.def.id)
+            let fill: UIColor = isPressed ? Palette.pressed
+                : (accent ? Palette.accent : (k.def.isCharacter ? Palette.key : Palette.functionKey))
 
             if let shadow = k.path.copy() as? UIBezierPath {
                 shadow.apply(CGAffineTransform(translationX: 0, y: 1))
@@ -154,9 +170,10 @@ final class KeyboardView: UIView {
             let single = k.def.isCharacter && k.def.label.count == 1
             let ratio: CGFloat = single ? 0.44 : 0.28
             let font = UIFont.systemFont(ofSize: m * ratio * CGFloat(settings.labelScale), weight: .regular)
-            var label = k.def.label
+            var label = labelOverrides[k.def.id] ?? k.def.label
             if cursorMode, case .space = k.def.action { label = "◀ ▲▼ ▶" }
-            let color = isPressed ? Palette.pressedText : Palette.text
+            var color = isPressed ? Palette.pressedText : (accent ? UIColor.white : Palette.text)
+            if disabledIDs.contains(k.def.id) { color = color.withAlphaComponent(0.35) }
             if let symbol = k.def.symbol {
                 drawSymbol(symbol, center: k.center, rotation: textRotation(k),
                            pointSize: m * 0.36 * CGFloat(settings.labelScale), color: color, in: ctx)
