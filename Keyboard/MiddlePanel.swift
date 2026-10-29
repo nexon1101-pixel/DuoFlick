@@ -12,15 +12,15 @@ struct MiddlePanel: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
+            FlowRows(spacing: 0) {
                 ForEach(Array(model.items.enumerated()), id: \.offset) { i, text in
                     Button { onSelect(i) } label: {
                         Text(text)
                             .font(.system(size: 20))
                             .lineLimit(1)
                             .foregroundStyle(Color(uiColor: model.selected == i ? Palette.pressedText : Palette.text))
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             .padding(.horizontal, 12)
+                            .frame(minWidth: 52, minHeight: 44)
                             .background(model.selected == i ? Color(uiColor: Palette.pressed) : Color.clear)
                             .contentShape(Rectangle())
                     }

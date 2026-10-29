@@ -43,7 +43,7 @@ enum KeyboardLayout {
             // 英字・記号は、片手でも普通の横並びにする
             return place(qwerty(s, mode, W), s, W, 1, topInset, centered: true)
         }
-        if grip == .one && s.iosLayout && W > 480 { return iosLayout(s, W, topInset, grip) }
+        if usesIOS(s, mode, grip, W) { return iosLayout(s, W, topInset, grip) }
         let avail = W - 2 * mm(s.marginMM)
         var fit: CGFloat = 1
         var built = build(s, mode, grip, W, fit)
@@ -55,6 +55,11 @@ enum KeyboardLayout {
             }
         }
         return place(built, s, W, fit, topInset, centered: s.shape == .standard)
+    }
+
+    /// iOS標準に合わせた配置を使うか（内側画面の片手持ちのかな）。使うときは変換候補の帯を出さない
+    static func usesIOS(_ s: KeyboardSettings, _ mode: InputMode, _ grip: Grip, _ W: CGFloat) -> Bool {
+        mode == .kana && grip == .one && s.iosLayout && W > 480
     }
 
     /// iOS標準に合わせた配置。左に4つのキー、間は候補の一覧、右にかなと⌫・空白・改行・123

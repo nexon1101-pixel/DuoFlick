@@ -96,6 +96,10 @@ final class KeyboardView: UIView {
     var topInset: CGFloat = 0 {
         didSet { if topInset != oldValue { relayout() } }
     }
+    /// 実際に空ける高さ。iOS標準の配置のときは、候補の帯を出さないので空けない
+    private func inset(for width: CGFloat) -> CGFloat {
+        KeyboardLayout.usesIOS(settings, mode, grip, width) ? 0 : topInset
+    }
     weak var guideView: GuideOverlayView?
     /// 空白キー長押し中の左右移動。負の値で左へ。
     var onCursor: ((Int) -> Void)?
@@ -152,7 +156,7 @@ final class KeyboardView: UIView {
     }
 
     func requiredHeight(for width: CGFloat) -> CGFloat {
-        KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: width, topInset: topInset).height
+        KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: width, topInset: inset(for: width)).height
     }
 
     override func layoutSubviews() {
@@ -168,7 +172,7 @@ final class KeyboardView: UIView {
     private func relayout() {
         layoutWidth = bounds.width
         guard layoutWidth > 0 else { return }
-        let result = KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: layoutWidth, topInset: topInset)
+        let result = KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: layoutWidth, topInset: inset(for: layoutWidth))
         keys = result.keys
         panelRect = result.panelRect
         onPanelRect?(result.panelRect)
@@ -348,7 +352,7 @@ final class KeyboardView: UIView {
 
     /// 最下段より下は反応させない。キーの隙間は一番近いキーとして扱う。
     private func hit(_ p: CGPoint) -> LaidKey? {
-        if p.y > keysBottom || p.y < topInset { return nil }
+        if p.y > keysBottom || p.y < inset(for: layoutWidth) { return nil }
         var best: LaidKey?
         var bestDistance = CGFloat.greatestFiniteMagnitude
         for k in keys {

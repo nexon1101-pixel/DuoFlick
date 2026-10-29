@@ -787,11 +787,13 @@ final class KeyboardViewController: UIInputViewController {
 
     private func showBar(_ items: [String], selected: Int?) {
         candidateBar.show(items, selected: selected)
-        panelModel.items = items
+        panelModel.items = composer.isEmpty ? items : composer.listTexts
         panelModel.selected = selected
     }
 
     private func updateMiddlePanel(_ rect: CGRect?) {
+        // 真ん中に候補を出すときは、上の候補の帯は要らない
+        candidateBar.isHidden = rect != nil
         guard let rect else {
             if let h = middleHost {
                 h.willMove(toParent: nil); h.view.removeFromSuperview(); h.removeFromParent()
