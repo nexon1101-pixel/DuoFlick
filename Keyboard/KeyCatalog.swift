@@ -164,7 +164,7 @@ enum KeyCatalog {
     static func splitColumns(_ mode: InputMode, grip: Grip) -> [[KeyDef?]] {
         let half = kanaColumns + [functionColumn(mode)]
         let gap: [KeyDef?] = [nil, nil, nil, nil]
-        return half + [gap] + half + [leftColumn(mode, grip: grip)]
+        return half + [gap] + [leftColumn(mode, grip: grip)] + half
     }
 
     // MARK: - 英字・記号（iPhone標準の英字キーボードと同じ並び）
