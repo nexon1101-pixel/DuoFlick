@@ -50,11 +50,16 @@ final class Composer {
     }
 
     private func importUserWords(into c: KanaKanjiConverter) {
+        // 最初から入れておく単語は、ユーザー辞書より少し低い順位で足す
+        let builtin = BuiltinWords.list.map {
+            DicdataElement(word: $0.word, ruby: Self.katakana($0.reading),
+                           cid: CIDData.固有名詞.cid, mid: MIDData.一般.mid, value: -7)
+        }
         let elements = userWords.map {
             DicdataElement(word: $0.word, ruby: Self.katakana($0.reading),
                            cid: CIDData.固有名詞.cid, mid: MIDData.一般.mid, value: -5)
         }
-        c.sendToDicdataStore(.importDynamicUserDict(elements))
+        c.sendToDicdataStore(.importDynamicUserDict(builtin + elements))
     }
 
     private static func katakana(_ s: String) -> String {
