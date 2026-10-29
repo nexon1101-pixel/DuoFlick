@@ -103,19 +103,20 @@ final class GuideOverlayView: UIView {
         }
     }
 
-    /// 方向を選んだとき：押したキーの縁から選んだ方向へ伸びる矢印形に、選んだ文字を大きく出す（iOS標準と同じ形）
+    /// 方向を選んだとき：選んだ方向に、押したキーを指す吹き出しを出して、選んだ文字を大きく出す（iOS標準と同じ形）
     private func drawBalloon(_ ch: String, dx: CGFloat, dy: CGFloat, w: CGFloat, h: CGFloat, in ctx: CGContext) {
         // 右向きを基準に作ってから、選んだ方向へ回す
         let along: CGFloat = dx != 0 ? w : h      // 伸びる向きの長さ
         let across: CGFloat = dx != 0 ? h : w     // 幅
-        let a: CGFloat = along * 0.42
-        let b: CGFloat = along * 1.5
-        let tip: CGFloat = along * 1.82
+        // 先は押したキーの側に向け、外側は四角（iOS標準と同じく、押したキーを指す吹き出し）
+        let t: CGFloat = along * 0.35
+        let a: CGFloat = along * 0.78
+        let b: CGFloat = along * 1.68
         let half: CGFloat = across * 0.5
         let path = UIBezierPath()
-        path.move(to: CGPoint(x: a, y: -half))
+        path.move(to: CGPoint(x: t, y: 0))
+        path.addLine(to: CGPoint(x: a, y: -half))
         path.addLine(to: CGPoint(x: b, y: -half))
-        path.addLine(to: CGPoint(x: tip, y: 0))
         path.addLine(to: CGPoint(x: b, y: half))
         path.addLine(to: CGPoint(x: a, y: half))
         path.close()
@@ -135,7 +136,7 @@ final class GuideOverlayView: UIView {
         ctx.restoreGState()
 
         // 文字は回さずに、矢印の太い部分の中央へ置く
-        let m: CGFloat = (a + b) / 2 + along * 0.05
+        let m: CGFloat = (a + b) / 2
         let center = CGPoint(x: dx * m, y: dy * m)
         let size: CGFloat = across * (ch.count > 1 ? 0.32 : 0.6)
         drawLabel(ch, in: CGRect(x: center.x - across / 2, y: center.y - across / 2, width: across, height: across),
