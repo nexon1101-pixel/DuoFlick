@@ -55,8 +55,12 @@ struct KeyDef {
 
     /// 文字の代わりに描く記号（SF Symbols の名前）
     var symbol: String? {
-        if case .nextKeyboard = action { return "globe" }
-        return nil
+        switch action {
+        case .nextKeyboard: return "globe"
+        case .shift: return "shift"
+        case .delete: return "delete.left"
+        default: return nil
+        }
     }
 
     var isDelete: Bool {

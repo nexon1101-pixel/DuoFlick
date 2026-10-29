@@ -193,7 +193,10 @@ final class KeyboardView: UIView {
             if cursorMode, case .space = k.def.action { label = "◀ ▲▼ ▶" }
             var color = isPressed ? Palette.pressedText : (accent ? UIColor.white : Palette.text)
             if disabledIDs.contains(k.def.id) { color = color.withAlphaComponent(0.35) }
-            if let symbol = k.def.symbol {
+            var symbolName = k.def.symbol
+            // シフトは状態で記号を変える（iOS標準と同じ：通常・大文字・固定）
+            if case .shift = k.def.action { symbolName = capsLock ? "capslock.fill" : (uppercase ? "shift.fill" : "shift") }
+            if let symbol = symbolName {
                 drawSymbol(symbol, center: k.center, rotation: textRotation(k),
                            pointSize: m * 0.36 * CGFloat(settings.labelScale), color: color, in: ctx)
             } else {
