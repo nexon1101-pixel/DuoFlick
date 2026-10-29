@@ -30,7 +30,6 @@ struct KeyboardSettings: Codable, Equatable {
     var hand: Hand = .right
     /// 両手から片手に戻すときに使う形
     var oneHandShape: KeyboardShape = .rightGrid
-    var keySound: Bool = true
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape
@@ -54,7 +53,6 @@ struct KeyboardSettings: Codable, Equatable {
         followFan = (try? c.decode(Bool.self, forKey: .followFan)) ?? d.followFan
         hand = (try? c.decode(Hand.self, forKey: .hand)) ?? d.hand
         oneHandShape = (try? c.decode(KeyboardShape.self, forKey: .oneHandShape)) ?? d.oneHandShape
-        keySound = (try? c.decode(Bool.self, forKey: .keySound)) ?? d.keySound
     }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。

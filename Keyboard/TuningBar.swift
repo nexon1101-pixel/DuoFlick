@@ -66,9 +66,12 @@ struct CompareState {
 /// キーボードの上に出す調整バー。数値を変えるとすぐ下のキーボードに反映される。
 struct TuningBar: View {
     @ObservedObject var model: SettingsModel
+    @ObservedObject var dictionary: UserDictionaryStore
     let onClose: () -> Void
+    let onRegister: () -> Void
     @State private var selectedID = "w"
     @State private var compare: CompareState?
+    @State private var showDictionary = false
 
     private var params: [TuningParam] {
         TuningParams.all.filter { $0.shapes.contains(model.settings.shape) }
@@ -79,7 +82,9 @@ struct TuningBar: View {
 
     var body: some View {
         Group {
-            if compare != nil {
+            if showDictionary {
+                dictionaryView
+            } else if compare != nil {
                 compareView
             } else {
                 manualView
@@ -107,9 +112,13 @@ struct TuningBar: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     chip("比べて決める", on: false, accent: true) { startCompare() }
-                    chip(model.settings.keySound ? "キー音：オン" : "キー音：オフ", on: model.settings.keySound) {
-                        model.settings.keySound.toggle()
+                    if model.settings.shape != .standard {
+                        chip(model.settings.hand == .right ? "片手：右手" : "片手：左手", on: true) {
+                            model.settings.hand = model.settings.hand == .right ? .left : .right
+                        }
                     }
+                    chip("単語登録", on: false) { onRegister() }
+                    chip("辞書の一覧", on: false) { showDictionary = true }
                     if model.settings.shape == .fan {
                         chip(model.settings.followFan ? "扇に沿わせる：オン" : "扇に沿わせる：オフ",
                              on: model.settings.followFan) {
@@ -163,6 +172,41 @@ struct TuningBar: View {
 
     private func nudge(_ p: TuningParam, _ delta: Double) {
         model.settings[keyPath: p.keyPath] = TuningParams.clamp(p, model.settings[keyPath: p.keyPath] + delta)
+    }
+
+    // MARK: - ユーザー辞書
+
+    private var dictionaryView: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Text("ユーザー辞書（\(dictionary.words.count)語）").font(.footnote.weight(.semibold))
+                Spacer()
+                Button("戻る") { showDictionary = false }.font(.footnote)
+            }
+            if dictionary.words.isEmpty {
+                Text("登録した単語はまだありません。「単語登録」から追加できます。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                ScrollView {
+                    VStack(spacing: 4) {
+                        ForEach(dictionary.words) { w in
+                            HStack {
+                                Text(w.word).font(.footnote)
+                                Text(w.reading).font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                                Button(role: .destructive) { dictionary.remove(w) } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .font(.footnote)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - 比べて決める

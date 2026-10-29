@@ -1,30 +1,27 @@
 import UIKit
 import SwiftUI
 
-/// キー音（iOSのキーボードのクリック音）を鳴らすための入力ビュー
-final class ClickInputView: UIInputView, UIInputViewAudioFeedback {
-    var enableInputClicksWhenVisible: Bool { true }
-}
-
 final class KeyboardViewController: UIInputViewController {
     private let model = SettingsModel()
+    private let dictionary = UserDictionaryStore()
     private let keyboardView = KeyboardView()
     private let candidateBar = CandidateBar()
     private let guideView = GuideOverlayView()
     private let composer = Composer()
-    private var tuningHost: UIHostingController<TuningBar>?
     private var heightConstraint: NSLayoutConstraint?
     private var keyboardTop: NSLayoutConstraint?
-    private let tuningHeight: CGFloat = 160
     private var lastWidth: CGFloat = 0
     private var mode: InputMode = .kana
 
+    /// キーボードの上に重ねて出す画面（調整バー・単語登録）
+    private var topHost: UIViewController?
+    private var topHeight: CGFloat = 0
+    private let tuningHeight: CGFloat = 160
+    private let registerHeight: CGFloat = 112
+    private var register: RegisterModel?
+
     /// 直前に確定した文字と読み（↺で取り消すため）
     private var lastCommit: (text: String, reading: String)?
-
-    override func loadView() {
-        inputView = ClickInputView(frame: .zero, inputViewStyle: .keyboard)
-    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -63,19 +60,20 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.guideView = guideView
         keyboardView.settings = model.settings
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
-        keyboardView.onPress = { [weak self] in
-            if self?.model.settings.keySound == true { UIDevice.current.playInputClick() }
-        }
-        keyboardView.onCursor = { [weak self] steps in self?.moveCursor(steps) }
+        keyboardView.onCursor = { [weak self] steps in self?.cursorDrag(steps) }
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
-        candidateBar.onSelect = { [weak self] i in self?.commitCandidate(i) }
-        candidateBar.onTool = { [weak self] id in self?.handleTool(id) }
+        candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
+
+        composer.userWords = dictionary.words
+        dictionary.onChange = { [weak self] in
+            guard let self else { return }
+            self.composer.userWords = self.dictionary.words
+        }
         model.onChange = { [weak self] s in
             guard let self else { return }
             s.save()
             self.keyboardView.settings = s
             self.updateHeight(force: true)
-            self.refreshBar()
         }
         refreshBar()
     }
@@ -83,6 +81,12 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyKeyboardType()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        commitAll()
+        composer.save()
     }
 
     override func viewWillLayoutSubviews() {
@@ -102,9 +106,9 @@ final class KeyboardViewController: UIInputViewController {
         guard type != lastKeyboardType else { return }
         lastKeyboardType = type
         switch type {
-        case .emailAddress, .URL, .asciiCapable, .twitter, .webSearch, .asciiCapableNumberPad:
-            setMode(type == .asciiCapableNumberPad ? .number : .alpha)
-        case .numberPad, .phonePad, .decimalPad, .numbersAndPunctuation, .namePhonePad:
+        case .emailAddress, .URL, .asciiCapable, .twitter, .webSearch:
+            setMode(.alpha)
+        case .numberPad, .phonePad, .decimalPad, .numbersAndPunctuation, .namePhonePad, .asciiCapableNumberPad:
             setMode(.number)
         default:
             setMode(.kana)
@@ -123,13 +127,17 @@ final class KeyboardViewController: UIInputViewController {
         guard w > 0 else { return }
         if !force && w == lastWidth { return }
         lastWidth = w
-        let h = keyboardView.requiredHeight(for: w) + (tuningHost == nil ? 0 : tuningHeight)
+        let h = keyboardView.requiredHeight(for: w) + topHeight
         if heightConstraint?.constant != h { heightConstraint?.constant = h }
     }
 
     // MARK: - 入力
 
     private func handle(_ def: KeyDef, _ dir: FlickDirection) {
+        if let reg = register {
+            handleRegisterKey(def, dir, reg)
+            return
+        }
         let proxy = textDocumentProxy
         if case .undo = def.action {
             undoCommit()
@@ -139,12 +147,13 @@ final class KeyboardViewController: UIInputViewController {
 
         switch def.action {
         case .kana(let chars):
-            let c = chars[dir.rawValue]
-            let s = c.isEmpty ? chars[0] : c
+            let s = pick(chars, dir)
             if isPunctuation(s) {
                 // 句読点は、入力中の文字を確定してからそのまま入れる
                 commitAll()
+                composer.clearPredictions()
                 proxy.insertText(s)
+                refreshBar()
             } else {
                 if composer.selectedIndex != nil { commitAll() }
                 composer.insert(s)
@@ -152,8 +161,9 @@ final class KeyboardViewController: UIInputViewController {
             }
         case .direct(let chars):
             commitAll()
-            let c = chars[dir.rawValue]
-            proxy.insertText(c.isEmpty ? chars[0] : c)
+            composer.clearPredictions()
+            proxy.insertText(pick(chars, dir))
+            refreshBar()
         case .modifier:
             if !composer.isEmpty {
                 if let last = composer.reading.last, let next = KeyCatalog.modified(String(last)),
@@ -176,34 +186,45 @@ final class KeyboardViewController: UIInputViewController {
             if dir == .left {
                 deleteWord()
             } else if composer.isEmpty {
+                composer.clearPredictions()
                 proxy.deleteBackward()
+                refreshBar()
             } else {
                 composer.deleteBackward()
                 updateComposition()
             }
         case .space:
             if composer.isEmpty {
+                composer.clearPredictions()
                 proxy.insertText(mode == .kana ? "　" : " ")
+                refreshBar()
             } else {
                 composer.selectNext()
                 updateComposition()
             }
         case .newline:
             if composer.isEmpty {
+                composer.clearPredictions()
                 proxy.insertText("\n")
+                refreshBar()
             } else {
                 commitAll()
             }
         case .modeSwitch:
             setMode(mode.next)
         case .settings:
-            toggleTuning()
+            showTuning(topHost == nil)
         case .nextKeyboard:
             commitAll()
             advanceToNextInputMode()
         case .undo:
             break
         }
+    }
+
+    private func pick(_ chars: [String], _ dir: FlickDirection) -> String {
+        let c = chars[dir.rawValue]
+        return c.isEmpty ? chars[0] : c
     }
 
     private func isPunctuation(_ s: String) -> Bool {
@@ -217,9 +238,10 @@ final class KeyboardViewController: UIInputViewController {
             updateComposition()
             return
         }
+        composer.clearPredictions()
         let proxy = textDocumentProxy
-        guard let before = proxy.documentContextBeforeInput, let last = before.last else { return }
-        var count = 0
+        guard let before = proxy.documentContextBeforeInput, let last = before.last else { refreshBar(); return }
+        let count: Int
         if last.isWhitespace || last.isNewline {
             count = before.reversed().prefix { $0.isWhitespace || $0.isNewline }.count
         } else {
@@ -227,6 +249,7 @@ final class KeyboardViewController: UIInputViewController {
             count = before.reversed().prefix { charKind($0) == kind }.count
         }
         for _ in 0..<max(1, count) { proxy.deleteBackward() }
+        refreshBar()
     }
 
     private func charKind(_ c: Character) -> Int {
@@ -260,14 +283,24 @@ final class KeyboardViewController: UIInputViewController {
         updateComposition()
     }
 
-    private func moveCursor(_ steps: Int) {
-        commitAll()
-        textDocumentProxy.adjustTextPosition(byCharacterOffset: steps)
+    /// 空白キー長押しの左右：入力中なら文節の区切りを動かし、そうでなければカーソルを動かす
+    private func cursorDrag(_ steps: Int) {
+        if register != nil { return }
+        if !composer.isEmpty {
+            composer.moveSegment(by: steps)
+            updateComposition()
+        } else {
+            composer.clearPredictions()
+            textDocumentProxy.adjustTextPosition(byCharacterOffset: steps)
+            refreshBar()
+        }
     }
 
     /// 上下の行へ移動する。改行で区切られた行が対象（折り返しは iOS から位置が分からないため対象外）
     private func moveCursorVertically(_ lines: Int) {
-        commitAll()
+        guard composer.isEmpty, register == nil else { return }
+        composer.clearPredictions()
+        refreshBar()
         let proxy = textDocumentProxy
         for _ in 0..<abs(lines) {
             let before = proxy.documentContextBeforeInput ?? ""
@@ -308,33 +341,23 @@ final class KeyboardViewController: UIInputViewController {
         refreshBar()
     }
 
+    /// 入力中は変換候補、確定直後は予測、それ以外は何も出さない
     private func refreshBar() {
-        if composer.isEmpty {
-            let s = model.settings
-            let oneHand = s.shape != .standard
-            candidateBar.showTools([
-                .init(id: "left", title: "左手", on: oneHand && s.hand == .left),
-                .init(id: "both", title: "両手", on: !oneHand),
-                .init(id: "right", title: "右手", on: oneHand && s.hand == .right),
-            ])
-        } else {
+        if !composer.isEmpty {
             candidateBar.show(composer.candidateTexts, selected: composer.selectedIndex)
+        } else {
+            candidateBar.show(composer.predictionTexts, selected: nil)
         }
     }
 
-    private func handleTool(_ id: String) {
-        var s = model.settings
-        switch id {
-        case "left", "right":
-            s.hand = id == "left" ? .left : .right
-            if s.shape == .standard { s.shape = s.oneHandShape }
-        case "both":
-            if s.shape != .standard { s.oneHandShape = s.shape }
-            s.shape = .standard
-        default:
-            return
+    private func selectFromBar(_ index: Int) {
+        if !composer.isEmpty {
+            commitCandidate(index)
+        } else if let text = composer.choosePrediction(at: index) {
+            textDocumentProxy.insertText(text)
+            lastCommit = nil
+            refreshBar()
         }
-        model.settings = s
     }
 
     private func commitCandidate(_ index: Int) {
@@ -358,38 +381,100 @@ final class KeyboardViewController: UIInputViewController {
         refreshBar()
     }
 
-    // MARK: - 調整バー
+    // MARK: - 単語登録
 
-    private func toggleTuning() {
-        keyboardTop?.isActive = false
-        if let host = tuningHost {
-            host.willMove(toParent: nil)
-            host.view.removeFromSuperview()
-            host.removeFromParent()
-            tuningHost = nil
-            let top = keyboardView.topAnchor.constraint(equalTo: view.topAnchor)
-            top.isActive = true
-            keyboardTop = top
-        } else {
-            let host = UIHostingController(rootView: TuningBar(model: model, onClose: { [weak self] in
-                self?.toggleTuning()
-            }))
-            host.view.backgroundColor = .clear
-            host.view.translatesAutoresizingMaskIntoConstraints = false
-            addChild(host)
-            view.addSubview(host.view)
-            host.didMove(toParent: self)
-            NSLayoutConstraint.activate([
-                host.view.topAnchor.constraint(equalTo: view.topAnchor),
-                host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                host.view.heightAnchor.constraint(equalToConstant: tuningHeight),
-            ])
-            let top = keyboardView.topAnchor.constraint(equalTo: host.view.bottomAnchor)
-            top.isActive = true
-            keyboardTop = top
-            tuningHost = host
+    private func startRegister() {
+        commitAll()
+        let selected = textDocumentProxy.selectedText ?? ""
+        let word = selected.isEmpty ? (lastCommit?.text ?? "") : selected
+        let reg = RegisterModel(word: word)
+        register = reg
+        setMode(.kana)
+        let panel = RegisterPanel(
+            model: reg,
+            onSave: { [weak self] in self?.finishRegister(save: true) },
+            onCancel: { [weak self] in self?.finishRegister(save: false) })
+        showTop(UIHostingController(rootView: panel), height: registerHeight)
+    }
+
+    private func finishRegister(save: Bool) {
+        if save, let reg = register {
+            dictionary.add(word: reg.word, reading: reg.reading)
         }
+        register = nil
+        hideTop()
+    }
+
+    /// 単語登録中は、かなキーで読みを入力する（入力欄には入れない）
+    private func handleRegisterKey(_ def: KeyDef, _ dir: FlickDirection, _ reg: RegisterModel) {
+        switch def.action {
+        case .kana(let chars), .direct(let chars):
+            reg.reading += pick(chars, dir)
+        case .modifier:
+            if let last = reg.reading.last, let next = KeyCatalog.modified(String(last)) {
+                reg.reading = String(reg.reading.dropLast()) + next
+            }
+        case .delete:
+            if !reg.reading.isEmpty { reg.reading.removeLast() }
+        case .newline:
+            finishRegister(save: !reg.word.isEmpty && !reg.reading.isEmpty)
+        case .settings, .undo:
+            finishRegister(save: false)
+        case .modeSwitch:
+            setMode(mode.next)
+        default:
+            break
+        }
+    }
+
+    // MARK: - 重ねる画面
+
+    private func showTuning(_ on: Bool) {
+        guard on else { hideTop(); return }
+        let bar = TuningBar(
+            model: model,
+            dictionary: dictionary,
+            onClose: { [weak self] in self?.hideTop() },
+            onRegister: { [weak self] in
+                self?.hideTop()
+                self?.startRegister()
+            })
+        showTop(UIHostingController(rootView: bar), height: tuningHeight)
+    }
+
+    private func showTop(_ host: UIViewController, height: CGFloat) {
+        hideTop()
+        keyboardTop?.isActive = false
+        host.view.backgroundColor = .clear
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(host)
+        view.addSubview(host.view)
+        host.didMove(toParent: self)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.heightAnchor.constraint(equalToConstant: height),
+        ])
+        let top = keyboardView.topAnchor.constraint(equalTo: host.view.bottomAnchor)
+        top.isActive = true
+        keyboardTop = top
+        topHost = host
+        topHeight = height
+        updateHeight(force: true)
+    }
+
+    private func hideTop() {
+        guard let host = topHost else { return }
+        keyboardTop?.isActive = false
+        host.willMove(toParent: nil)
+        host.view.removeFromSuperview()
+        host.removeFromParent()
+        topHost = nil
+        topHeight = 0
+        let top = keyboardView.topAnchor.constraint(equalTo: view.topAnchor)
+        top.isActive = true
+        keyboardTop = top
         updateHeight(force: true)
     }
 }

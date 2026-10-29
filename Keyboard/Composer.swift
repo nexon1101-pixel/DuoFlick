@@ -9,35 +9,91 @@ final class Composer {
     /// 空白キーで選んでいる候補。nil のときはひらがなのまま。
     private(set) var selectedIndex: Int?
 
-    private lazy var converter = KanaKanjiConverter()
+    /// 確定後に出す、次に続きそうな言葉
+    private(set) var predictions: [PostCompositionPredictionCandidate] = []
+    private var predictionBase: Candidate?
+
+    /// ユーザー辞書の単語（変換エンジンを作ったときと、辞書を変えたときに渡す）
+    var userWords: [UserWord] = [] {
+        didSet { if converterReady { importUserWords() } }
+    }
+
+    private var converterReady = false
+    private lazy var converter: KanaKanjiConverter = {
+        let c = KanaKanjiConverter()
+        c.sendToDicdataStore(.setRequestOptions(options))
+        converterReady = true
+        importUserWords(into: c)
+        return c
+    }()
+
     private lazy var options: ConvertRequestOptions = {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+        let fm = FileManager.default
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory
+        let dir = base.appendingPathComponent("DuoFlickLearning", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return ConvertRequestOptions.withDefaultDictionary(
             N_best: 10,
             requireJapanesePrediction: true,
             requireEnglishPrediction: false,
             keyboardLanguage: .ja_JP,
-            learningType: .nothing,
+            learningType: .inputAndOutput,
             memoryDirectoryURL: dir,
             sharedContainerURL: dir,
             metadata: .init(versionString: "DuoFlick")
         )
     }()
 
+    private func importUserWords() {
+        importUserWords(into: converter)
+    }
+
+    private func importUserWords(into c: KanaKanjiConverter) {
+        let elements = userWords.map {
+            DicdataElement(word: $0.word, ruby: Self.katakana($0.reading),
+                           cid: CIDData.固有名詞.cid, mid: MIDData.一般.mid, value: -5)
+        }
+        c.sendToDicdataStore(.importDynamicUserDict(elements))
+    }
+
+    private static func katakana(_ s: String) -> String {
+        s.applyingTransform(.hiraganaToKatakana, reverse: false) ?? s
+    }
+
     var isEmpty: Bool { composing.isEmpty }
     var reading: String { composing.convertTarget }
 
+    /// 文節を区切っているか（読みの途中までを変換している）
+    private var isSegmented: Bool {
+        composing.convertTargetCursorPosition < composing.convertTarget.count
+    }
+
+    /// 区切った位置より後ろの読み
+    private var readingAfterSegment: String {
+        String(composing.convertTarget.dropFirst(composing.convertTargetCursorPosition))
+    }
+
     /// 入力欄に下線付きで表示する文字
     var markedText: String {
-        if let i = selectedIndex, i < candidates.count { return candidates[i].text }
+        if let i = selectedIndex, i < candidates.count {
+            return candidates[i].text + readingAfterSegment
+        }
         return composing.convertTarget
     }
 
     var candidateTexts: [String] { candidates.map(\.text) }
+    var predictionTexts: [String] { predictions.map(\.text) }
+
+    func clearPredictions() {
+        predictions = []
+        predictionBase = nil
+    }
 
     func insert(_ s: String) {
+        clearPredictions()
         selectedIndex = nil
+        // 文節を区切っていた場合も、入力は末尾に足す
+        _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.insertAtCursorPosition(s, inputStyle: .direct)
         refresh()
     }
@@ -46,6 +102,7 @@ final class Composer {
     func replaceLast(with s: String) -> Bool {
         guard !composing.isEmpty else { return false }
         selectedIndex = nil
+        _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.deleteBackwardFromCursorPosition(count: 1)
         composing.insertAtCursorPosition(s, inputStyle: .direct)
         refresh()
@@ -58,8 +115,23 @@ final class Composer {
             selectedIndex = nil
             return
         }
+        _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.deleteBackwardFromCursorPosition(count: 1)
         refresh()
+    }
+
+    /// 文節の区切り位置を動かす（空白キー長押しで左右）
+    func moveSegment(by count: Int) {
+        guard !composing.isEmpty else { return }
+        let moved = composing.moveCursorFromCursorPosition(count: count)
+        // 区切りは1文字以上残す
+        if composing.convertTargetCursorPosition == 0 {
+            _ = composing.moveCursorFromCursorPosition(count: 1)
+        }
+        if moved != 0 {
+            selectedIndex = nil
+            refresh()
+        }
     }
 
     /// 空白キー：次の候補を選ぶ
@@ -72,17 +144,21 @@ final class Composer {
         }
     }
 
-    /// 候補を確定する。確定した文字と、まだ残っている読みがあるかを返す。
+    /// 候補を確定する。確定した文字を返す。
     func commit(candidateAt index: Int) -> String? {
         guard index < candidates.count else { return nil }
         let c = candidates[index]
         composing.prefixComplete(composingCount: c.composingCount)
         selectedIndex = nil
+        converter.updateLearningData(c)
         if composing.isEmpty {
             converter.stopComposition()
             candidates = []
+            startPredictions(after: c)
         } else {
             converter.setCompletedData(c)
+            // 残りの読みは区切りなしで変換し直す
+            _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
             refresh()
         }
         return c.text
@@ -93,10 +169,30 @@ final class Composer {
         var out = ""
         if let i = selectedIndex, let text = commit(candidateAt: i) {
             out += text
+            if composing.isEmpty { return out }
         }
         out += composing.convertTarget
         reset()
         return out
+    }
+
+    /// 予測の候補を選んだ。入れる文字を返す。
+    func choosePrediction(at index: Int) -> String? {
+        guard index < predictions.count, let base = predictionBase else { return nil }
+        let p = predictions[index]
+        converter.updateLearningData(base, with: p)
+        if p.isTerminal {
+            clearPredictions()
+        } else {
+            startPredictions(after: p.join(to: base))
+        }
+        return p.text
+    }
+
+    private func startPredictions(after c: Candidate) {
+        predictionBase = c
+        let list = converter.requestPostCompositionPredictionCandidates(leftSideCandidate: c, options: options)
+        predictions = Array(list.prefix(10))
     }
 
     /// 確定を取り消したとき、読みを入力中の状態に戻す
@@ -107,17 +203,24 @@ final class Composer {
 
     func reset() {
         composing.stopComposition()
-        converter.stopComposition()
+        if converterReady { converter.stopComposition() }
         candidates = []
         selectedIndex = nil
+    }
+
+    /// 学習内容を保存する（キーボードを閉じるとき）
+    func save() {
+        guard converterReady else { return }
+        converter.sendToDicdataStore(.closeKeyboard)
     }
 
     private func refresh() {
         guard !composing.isEmpty else {
             candidates = []
-            converter.stopComposition()
+            if converterReady { converter.stopComposition() }
             return
         }
-        candidates = converter.requestCandidates(composing, options: options).mainResults
+        let target = isSegmented ? composing.prefixToCursorPosition() : composing
+        candidates = converter.requestCandidates(target, options: options).mainResults
     }
 }
