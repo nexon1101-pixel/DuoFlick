@@ -184,6 +184,7 @@ final class KeyboardViewController: UIInputViewController {
             }
             return
         }
+        domainCandidates = []
         // 候補を選んでいる間（変換待ち）は、数字キーと、⌫・次候補・確定のキー以外は押せない
         if composer.selectedIndex != nil, !isAllowedWhileSelecting(def) { return }
         let proxy = textDocumentProxy
@@ -242,6 +243,8 @@ final class KeyboardViewController: UIInputViewController {
             let s = styled(pick(chars, dir))
             if toggle != nil { toggle?.output = s }
             proxy.insertText(s)
+            // 「@」を打ったら、よく使うメールのドメインを候補に出す
+            if s == "@" { domainCandidates = Self.mailDomains }
             refreshBar()
             updateShiftDisplay()
         case .modifier:
@@ -614,7 +617,7 @@ final class KeyboardViewController: UIInputViewController {
         if !composer.isEmpty {
             candidateBar.show(composer.candidateTexts, selected: composer.selectedIndex)
         } else {
-            candidateBar.show(composer.predictionTexts, selected: nil)
+            candidateBar.show(domainCandidates.isEmpty ? composer.predictionTexts : domainCandidates, selected: nil)
             hideCandidateList()
         }
         let canExpand = !composer.isEmpty && !composer.candidateTexts.isEmpty
@@ -699,6 +702,14 @@ final class KeyboardViewController: UIInputViewController {
         listHost = nil
     }
 
+    /// 「@」のあとに出す、よく使うメールのドメイン
+    private var domainCandidates: [String] = []
+    private static let mailDomains = [
+        "gmail.com", "icloud.com", "yahoo.co.jp", "outlook.jp", "outlook.com", "docomo.ne.jp",
+        "ezweb.ne.jp", "au.com", "softbank.ne.jp", "i.softbank.jp", "hotmail.co.jp", "hotmail.com",
+        "yahoo.com", "live.jp", "nifty.com", "ybb.ne.jp"
+    ]
+
     private func selectFromBar(_ index: Int) {
         if !composer.isEmpty {
             if composer.needsRefresh {
@@ -708,6 +719,11 @@ final class KeyboardViewController: UIInputViewController {
             } else {
                 commitCandidate(index)
             }
+        } else if !domainCandidates.isEmpty {
+            if index < domainCandidates.count { textDocumentProxy.insertText(domainCandidates[index]) }
+            domainCandidates = []
+            lastCommit = nil
+            refreshBar()
         } else if let text = composer.choosePrediction(at: index) {
             textDocumentProxy.insertText(text)
             lastCommit = nil
