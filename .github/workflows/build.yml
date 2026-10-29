@@ -47,7 +47,22 @@ jobs:
             cp -R "$fw" Payload/DuoFlick.app/Frameworks/
           done
           rmdir Payload/DuoFlick.app/Frameworks 2>/dev/null || true
-          zip -qry DuoFlick.ipa Payload
+          # 辞書には日本語のファイル名（キ.louds など）があるため、ファイル名を UTF-8 と明示した zip にする。
+          # 印のない zip だと、Windows の Sideloadly で展開したときに名前が文字化けし、辞書が読めなくなる。
+          python3 - <<'PY'
+          import os, zipfile
+          with zipfile.ZipFile("DuoFlick.ipa", "w", zipfile.ZIP_DEFLATED) as z:
+              for root, dirs, files in os.walk("Payload"):
+                  for f in files:
+                      p = os.path.join(root, f)
+                      info = zipfile.ZipInfo.from_file(p, p)
+                      info.compress_type = zipfile.ZIP_DEFLATED
+                      with open(p, "rb") as fh:
+                          z.writestr(info, fh.read())
+          with zipfile.ZipFile("DuoFlick.ipa") as z:
+              names = [i for i in z.infolist() if "louds/キ.louds" in i.filename]
+              print("check:", [(i.filename, hex(i.flag_bits)) for i in names])
+          PY
 
       - name: Show bundle contents
         run: |
