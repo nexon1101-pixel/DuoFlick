@@ -49,7 +49,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build
+            build 2>&1 | tee build.log
+
+      - name: Show build errors
+        if: failure()
+        run: python3 .github/scripts/errors.py
 
       - name: Package .ipa
         run: |
