@@ -227,45 +227,32 @@ final class KeyboardView: UIView {
     /// 数字キーは右（左手のときは左）に寄せるほど親指が届きやすい
     private var numberMirrored: Bool { settings.shape != .standard && settings.hand == .left }
 
-    /// 数字の枠のマスの大きさ（キーより大きくして、選びやすくする）
-    private func numberCell(_ a: Active) -> CGSize {
-        let side: CGFloat = max(a.key.size.width, a.key.size.height) * 1.4
-        return CGSize(width: side, height: side)
+    /// 数字を並べる入力エリア全体（電話のように 1〜9 を3列、いちばん下の段の真ん中に 0）
+    private static let numberGridDigits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", ""]
+    private var numberGridRect: CGRect { bounds.insetBy(dx: 6, dy: 6) }
+
+    private func numberGridIndex(at p: CGPoint) -> Int {
+        let r = numberGridRect
+        let col = min(max(Int((p.x - r.minX) / (r.width / 3)), 0), 2)
+        let row = min(max(Int((p.y - r.minY) / (r.height / 4)), 0), 3)
+        return row * 3 + col
     }
 
     private func numberGuide(_ a: Active) -> FlickGuide {
         let side: CGFloat = numberMirrored ? -1 : 1
-        if let stage = a.numberStage {
-            let base = stage * 5
-            let chars = (0..<5).map { String(base + $0) }
-            return FlickGuide(center: a.numberAnchor, size: numberCell(a), rotation: 0, chars: chars,
-                              selected: numberChoice(a, at: a.current),
-                              keepCross: true, fixedPosition: true)
+        if a.numberStage != nil {
+            return FlickGuide(center: .zero, size: .zero, rotation: 0, chars: [], selected: .tap,
+                              grid: Self.numberGridDigits, gridRect: numberGridRect,
+                              gridSelected: numberGridIndex(at: a.current))
         }
-        // まだ枠を選んでいない：右上に0〜4、右下に5〜9があることを示す
+        // まだ動かしていない：動かすと数字が全体に出ることを示す
         return FlickGuide(center: a.key.center, size: a.key.size, rotation: 0,
-                          chars: ["", "", "0〜4", "", "5〜9"], selected: .tap,
-                          offsets: [.zero, .zero, CGPoint(x: side, y: -1), .zero, CGPoint(x: side, y: 1)],
+                          chars: ["", "", "0〜9", "", ""], selected: .tap,
+                          offsets: [.zero, .zero, CGPoint(x: side, y: -1), .zero, .zero],
                           keepCross: true)
     }
 
-    /// 開いた枠の中で、指がいちばん近いマスの数字を選ぶ
-    private func numberChoice(_ a: Active, at p: CGPoint) -> FlickDirection {
-        let cell = numberCell(a)
-        let marks: [(FlickDirection, CGFloat, CGFloat)] = [(.tap, 0, 0), (.left, -1, 0), (.up, 0, -1), (.right, 1, 0), (.down, 0, 1)]
-        var best: FlickDirection = .tap
-        var bestD = CGFloat.greatestFiniteMagnitude
-        for (d, ox, oy) in marks {
-            let cx: CGFloat = a.numberAnchor.x + ox * cell.width
-            let cy: CGFloat = a.numberAnchor.y + oy * cell.height
-            let dist: CGFloat = hypot(p.x - cx, p.y - cy)
-            if dist < bestD { bestD = dist; best = d }
-        }
-        return best
-    }
-
-    /// 数字キーを斜めに動かしたとき：キーの大きさに比べて十分に動いたら、上なら0〜4、下なら5〜9の枠を、
-    /// 指の位置を中心に開く（枠が画面からはみ出す場合は内側にずらす）
+    /// 数字キーを押したまま少し動かしたら、数字を入力エリア全体に出す。離したときに、指のあるマスの数字を入れる
     private func trackNumber(_ a: Active, _ p: CGPoint) {
         guard a.numberStage == nil else { return }
         let dx: CGFloat = p.x - a.start.x
@@ -273,15 +260,7 @@ final class KeyboardView: UIView {
         let need: CGFloat = max(CGFloat(settings.flickMinMM) * CGFloat(KeyboardSettings.ptPerMM),
                                 min(a.key.size.width, a.key.size.height) * 0.5)
         guard hypot(dx, dy) >= need else { return }
-        a.numberStage = dy < 0 ? 0 : 1
-        let cell = numberCell(a)
-        let halfW: CGFloat = cell.width * 1.5 + 2
-        let halfH: CGFloat = cell.height * 1.5 + 2
-        var x: CGFloat = p.x
-        var y: CGFloat = p.y
-        if bounds.width > halfW * 2 { x = min(max(x, halfW), bounds.width - halfW) }
-        if bounds.height > halfH * 2 { y = min(max(y, halfH), bounds.height - halfH) }
-        a.numberAnchor = CGPoint(x: x, y: y)
+        a.numberStage = 0
     }
 
     private func drawText(_ s: String, center: CGPoint, rotation: CGFloat, font: UIFont, color: UIColor, in ctx: CGContext) {
@@ -549,10 +528,11 @@ final class KeyboardView: UIView {
             a.timer?.invalidate()
             if a.key.def.isNumberPad {
                 // タップだけでは何も入れない
-                if let stage = a.numberStage {
-                    let d = numberChoice(a, at: t.location(in: self))
-                    let digit = String(stage * 5 + d.rawValue)
-                    onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
+                if a.numberStage != nil {
+                    let digit = Self.numberGridDigits[numberGridIndex(at: t.location(in: self))]
+                    if !digit.isEmpty {
+                        onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
+                    }
                 }
                 continue
             }
