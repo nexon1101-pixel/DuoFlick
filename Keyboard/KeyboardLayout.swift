@@ -35,22 +35,30 @@ enum KeyboardLayout {
         var width: CGFloat { maxX - minX }
     }
 
-    static func make(settings s: KeyboardSettings, width W: CGFloat, topInset: CGFloat = 0) -> LayoutResult {
+    static func make(settings s: KeyboardSettings, mode: InputMode = .kana, width W: CGFloat, topInset: CGFloat = 0) -> LayoutResult {
         let avail = W - 2 * mm(s.marginMM)
         var fit: CGFloat = 1
-        var built = build(s, W, fit)
+        var built = build(s, mode, W, fit)
         if s.shape != .standard {
             // 画面幅に収まらないときは、キーの幅を縮めて収める
             for _ in 0..<4 where built.width > avail + 0.5 {
                 fit *= avail / built.width * 0.995
-                built = build(s, W, fit)
+                built = build(s, mode, W, fit)
             }
         }
         return place(built, s, W, fit, topInset)
     }
 
-    private static func build(_ s: KeyboardSettings, _ W: CGFloat, _ fit: CGFloat) -> Built {
-        let cols = KeyCatalog.columns
+    private static func isLeftHand(_ s: KeyboardSettings) -> Bool {
+        s.shape != .standard && s.hand == .left
+    }
+
+    private static func build(_ s: KeyboardSettings, _ mode: InputMode, _ W: CGFloat, _ fit: CGFloat) -> Built {
+        // 左手のときは、列を逆順に作ってから左右反転する。こうするとキーの並び（あかさ…）は
+        // そのままで、扇の開く向きや大きくなる側だけが左右逆になる。
+        let left = isLeftHand(s)
+        let baseCols = KeyCatalog.columns(mode)
+        let cols = left ? Array(baseCols.reversed()) : baseCols
         let n = cols.count
         let g = mm(s.gapMM), m = mm(s.marginMM)
         let oneHand = s.shape != .standard
@@ -145,6 +153,14 @@ enum KeyboardLayout {
             }
         }
 
+        if left {
+            for i in raws.indices {
+                raws[i].points = raws[i].points.map { CGPoint(x: -$0.x, y: $0.y) }
+                raws[i].center = CGPoint(x: -raws[i].center.x, y: raws[i].center.y)
+                raws[i].rotation = -raws[i].rotation
+            }
+        }
+
         var minX = CGFloat.greatestFiniteMagnitude, minY = CGFloat.greatestFiniteMagnitude
         var maxX = -CGFloat.greatestFiniteMagnitude, maxY = -CGFloat.greatestFiniteMagnitude
         for k in raws {
@@ -189,6 +205,8 @@ enum KeyboardLayout {
         let dx: CGFloat
         if s.shape == .standard {
             dx = (W - b.width) / 2 - b.minX
+        } else if isLeftHand(s) {
+            dx = m - b.minX
         } else {
             dx = W - m - b.maxX
         }
@@ -204,9 +222,11 @@ enum KeyboardLayout {
                 path.lineJoinStyle = .round
                 path.lineWidth = KeyboardLayout.cornerRadius * 2
             } else {
-                path = UIBezierPath(roundedRect: CGRect(x: pts[0].x, y: pts[0].y,
-                                                        width: raw.size.width, height: raw.size.height),
-                                    cornerRadius: KeyboardLayout.cornerRadius * 1.6)
+                // 左右反転したときも正しい位置になるよう、角の座標の最小値から四角を作る
+                let rx: CGFloat = pts.map(\.x).min() ?? 0
+                let ry: CGFloat = pts.map(\.y).min() ?? 0
+                let rect = CGRect(x: rx, y: ry, width: raw.size.width, height: raw.size.height)
+                path = UIBezierPath(roundedRect: rect, cornerRadius: KeyboardLayout.cornerRadius * 1.6)
             }
             return LaidKey(def: raw.def, path: path,
                            center: CGPoint(x: raw.center.x + dx, y: raw.center.y + dy),

@@ -99,6 +99,12 @@ final class Composer {
         return out
     }
 
+    /// 確定を取り消したとき、読みを入力中の状態に戻す
+    func restore(reading: String) {
+        reset()
+        insert(reading)
+    }
+
     func reset() {
         composing.stopComposition()
         converter.stopComposition()

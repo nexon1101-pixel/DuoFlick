@@ -36,9 +36,28 @@ jobs:
 
       - name: Package .ipa
         run: |
+          PRODUCTS=build/Build/Products/Release-iphoneos
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/DuoFlick.app Payload/
+          cp -R "$PRODUCTS/DuoFlick.app" Payload/
+          # パッケージ由来の動的ライブラリ（llama.cpp など）を、キーボードが読み込めるようアプリに同梱する
+          mkdir -p Payload/DuoFlick.app/Frameworks
+          for fw in "$PRODUCTS"/*.framework "$PRODUCTS"/PackageFrameworks/*.framework; do
+            [ -e "$fw" ] || continue
+            echo "embed: $fw"
+            cp -R "$fw" Payload/DuoFlick.app/Frameworks/
+          done
+          rmdir Payload/DuoFlick.app/Frameworks 2>/dev/null || true
           zip -qry DuoFlick.ipa Payload
+
+      - name: Show bundle contents
+        run: |
+          APPEX=Payload/DuoFlick.app/PlugIns/DuoFlickKeyboard.appex
+          du -sh Payload/DuoFlick.app "$APPEX" || true
+          ls -la "$APPEX" || true
+          ls "$APPEX"/Frameworks 2>/dev/null || echo "no Frameworks in appex"
+          ls Payload/DuoFlick.app/Frameworks 2>/dev/null || echo "no Frameworks in app"
+          otool -L "$APPEX/DuoFlickKeyboard" | head -40 || true
+          otool -l "$APPEX/DuoFlickKeyboard" | grep -A2 LC_RPATH || true
 
       - uses: actions/upload-artifact@v4
         with:

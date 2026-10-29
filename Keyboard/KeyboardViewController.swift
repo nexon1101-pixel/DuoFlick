@@ -1,6 +1,11 @@
 import UIKit
 import SwiftUI
 
+/// キー音（iOSのキーボードのクリック音）を鳴らすための入力ビュー
+final class ClickInputView: UIInputView, UIInputViewAudioFeedback {
+    var enableInputClicksWhenVisible: Bool { true }
+}
+
 final class KeyboardViewController: UIInputViewController {
     private let model = SettingsModel()
     private let keyboardView = KeyboardView()
@@ -12,6 +17,14 @@ final class KeyboardViewController: UIInputViewController {
     private var keyboardTop: NSLayoutConstraint?
     private let tuningHeight: CGFloat = 160
     private var lastWidth: CGFloat = 0
+    private var mode: InputMode = .kana
+
+    /// 直前に確定した文字と読み（↺で取り消すため）
+    private var lastCommit: (text: String, reading: String)?
+
+    override func loadView() {
+        inputView = ClickInputView(frame: .zero, inputViewStyle: .keyboard)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -50,19 +63,59 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.guideView = guideView
         keyboardView.settings = model.settings
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
+        keyboardView.onPress = { [weak self] in
+            if self?.model.settings.keySound == true { UIDevice.current.playInputClick() }
+        }
         keyboardView.onCursor = { [weak self] steps in self?.moveCursor(steps) }
+        keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.commitCandidate(i) }
+        candidateBar.onTool = { [weak self] id in self?.handleTool(id) }
         model.onChange = { [weak self] s in
             guard let self else { return }
             s.save()
             self.keyboardView.settings = s
             self.updateHeight(force: true)
+            self.refreshBar()
         }
+        refreshBar()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyKeyboardType()
     }
 
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
         updateHeight(force: false)
+    }
+
+    override func textDidChange(_ textInput: (any UITextInput)?) {
+        super.textDidChange(textInput)
+        applyKeyboardType()
+    }
+
+    /// 入力欄の種類に合わせて、最初の文字種を選ぶ
+    private var lastKeyboardType: UIKeyboardType?
+    private func applyKeyboardType() {
+        let type = textDocumentProxy.keyboardType ?? .default
+        guard type != lastKeyboardType else { return }
+        lastKeyboardType = type
+        switch type {
+        case .emailAddress, .URL, .asciiCapable, .twitter, .webSearch, .asciiCapableNumberPad:
+            setMode(type == .asciiCapableNumberPad ? .number : .alpha)
+        case .numberPad, .phonePad, .decimalPad, .numbersAndPunctuation, .namePhonePad:
+            setMode(.number)
+        default:
+            setMode(.kana)
+        }
+    }
+
+    private func setMode(_ m: InputMode) {
+        if m != .kana { commitAll() }
+        mode = m
+        keyboardView.mode = m
+        updateHeight(force: true)
     }
 
     private func updateHeight(force: Bool) {
@@ -78,6 +131,12 @@ final class KeyboardViewController: UIInputViewController {
 
     private func handle(_ def: KeyDef, _ dir: FlickDirection) {
         let proxy = textDocumentProxy
+        if case .undo = def.action {
+            undoCommit()
+            return
+        }
+        lastCommit = nil
+
         switch def.action {
         case .kana(let chars):
             let c = chars[dir.rawValue]
@@ -91,6 +150,10 @@ final class KeyboardViewController: UIInputViewController {
                 composer.insert(s)
                 updateComposition()
             }
+        case .direct(let chars):
+            commitAll()
+            let c = chars[dir.rawValue]
+            proxy.insertText(c.isEmpty ? chars[0] : c)
         case .modifier:
             if !composer.isEmpty {
                 if let last = composer.reading.last, let next = KeyCatalog.modified(String(last)),
@@ -102,8 +165,17 @@ final class KeyboardViewController: UIInputViewController {
                 proxy.deleteBackward()
                 proxy.insertText(next)
             }
+        case .caseToggle:
+            if let last = proxy.documentContextBeforeInput?.last, last.isLetter, last.isASCII {
+                let s = String(last)
+                let swapped = s == s.lowercased() ? s.uppercased() : s.lowercased()
+                proxy.deleteBackward()
+                proxy.insertText(swapped)
+            }
         case .delete:
-            if composer.isEmpty {
+            if dir == .left {
+                deleteWord()
+            } else if composer.isEmpty {
                 proxy.deleteBackward()
             } else {
                 composer.deleteBackward()
@@ -111,7 +183,7 @@ final class KeyboardViewController: UIInputViewController {
             }
         case .space:
             if composer.isEmpty {
-                proxy.insertText("　")
+                proxy.insertText(mode == .kana ? "　" : " ")
             } else {
                 composer.selectNext()
                 updateComposition()
@@ -122,15 +194,15 @@ final class KeyboardViewController: UIInputViewController {
             } else {
                 commitAll()
             }
-        case .cursorLeft:
-            moveCursor(-1)
-        case .cursorRight:
-            moveCursor(1)
+        case .modeSwitch:
+            setMode(mode.next)
         case .settings:
             toggleTuning()
         case .nextKeyboard:
             commitAll()
             advanceToNextInputMode()
+        case .undo:
+            break
         }
     }
 
@@ -138,9 +210,89 @@ final class KeyboardViewController: UIInputViewController {
         ["、", "。", "？", "！", "「", "」"].contains(s)
     }
 
+    /// ⌫の左フリック：入力中なら全部消す。そうでなければ直前の語（同じ種類の文字が続く部分）を消す
+    private func deleteWord() {
+        if !composer.isEmpty {
+            composer.reset()
+            updateComposition()
+            return
+        }
+        let proxy = textDocumentProxy
+        guard let before = proxy.documentContextBeforeInput, let last = before.last else { return }
+        var count = 0
+        if last.isWhitespace || last.isNewline {
+            count = before.reversed().prefix { $0.isWhitespace || $0.isNewline }.count
+        } else {
+            let kind = charKind(last)
+            count = before.reversed().prefix { charKind($0) == kind }.count
+        }
+        for _ in 0..<max(1, count) { proxy.deleteBackward() }
+    }
+
+    private func charKind(_ c: Character) -> Int {
+        guard let u = c.unicodeScalars.first?.value else { return 0 }
+        switch u {
+        case 0x3041...0x309F: return 1          // ひらがな
+        case 0x30A0...0x30FF: return 2          // カタカナ
+        case 0x4E00...0x9FFF, 0x3005: return 3  // 漢字
+        default:
+            if c.isLetter || c.isNumber { return 4 }   // 英数字
+            if c.isWhitespace || c.isNewline { return 5 }
+            return 6                                   // 記号
+        }
+    }
+
+    /// ↺：直前の確定を取り消して、読みに戻す
+    private func undoCommit() {
+        if !composer.isEmpty {
+            if composer.selectedIndex != nil {
+                composer.deleteBackward()   // 候補の選択を解除してひらがなに戻す
+                updateComposition()
+            }
+            return
+        }
+        let proxy = textDocumentProxy
+        guard let last = lastCommit, let before = proxy.documentContextBeforeInput,
+              before.hasSuffix(last.text) else { return }
+        for _ in 0..<last.text.count { proxy.deleteBackward() }
+        lastCommit = nil
+        composer.restore(reading: last.reading)
+        updateComposition()
+    }
+
     private func moveCursor(_ steps: Int) {
         commitAll()
         textDocumentProxy.adjustTextPosition(byCharacterOffset: steps)
+    }
+
+    /// 上下の行へ移動する。改行で区切られた行が対象（折り返しは iOS から位置が分からないため対象外）
+    private func moveCursorVertically(_ lines: Int) {
+        commitAll()
+        let proxy = textDocumentProxy
+        for _ in 0..<abs(lines) {
+            let before = proxy.documentContextBeforeInput ?? ""
+            let after = proxy.documentContextAfterInput ?? ""
+            let beforeChars = Array(before)
+            let col = beforeChars.reversed().prefix { $0 != "\n" }.count
+            if lines < 0 {
+                // 前の行の同じ位置へ
+                let lineStart = beforeChars.count - col
+                guard lineStart > 0 else { proxy.adjustTextPosition(byCharacterOffset: -col); return }
+                let prevPart = Array(beforeChars[0..<(lineStart - 1)])
+                let prevLen = prevPart.reversed().prefix { $0 != "\n" }.count
+                let target = (lineStart - 1 - prevLen) + min(col, prevLen)
+                proxy.adjustTextPosition(byCharacterOffset: target - beforeChars.count)
+            } else {
+                // 次の行の同じ位置へ
+                let afterChars = Array(after)
+                guard let nl = afterChars.firstIndex(of: "\n") else {
+                    proxy.adjustTextPosition(byCharacterOffset: afterChars.count); return
+                }
+                let rest = afterChars[(nl + 1)...]
+                let nextLen = rest.prefix { $0 != "\n" }.count
+                proxy.adjustTextPosition(byCharacterOffset: nl + 1 + min(col, nextLen))
+            }
+        }
     }
 
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
@@ -153,24 +305,57 @@ final class KeyboardViewController: UIInputViewController {
             let text = composer.markedText
             proxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
         }
-        candidateBar.show(composer.candidateTexts, selected: composer.selectedIndex)
+        refreshBar()
+    }
+
+    private func refreshBar() {
+        if composer.isEmpty {
+            let s = model.settings
+            let oneHand = s.shape != .standard
+            candidateBar.showTools([
+                .init(id: "left", title: "左手", on: oneHand && s.hand == .left),
+                .init(id: "both", title: "両手", on: !oneHand),
+                .init(id: "right", title: "右手", on: oneHand && s.hand == .right),
+            ])
+        } else {
+            candidateBar.show(composer.candidateTexts, selected: composer.selectedIndex)
+        }
+    }
+
+    private func handleTool(_ id: String) {
+        var s = model.settings
+        switch id {
+        case "left", "right":
+            s.hand = id == "left" ? .left : .right
+            if s.shape == .standard { s.shape = s.oneHandShape }
+        case "both":
+            if s.shape != .standard { s.oneHandShape = s.shape }
+            s.shape = .standard
+        default:
+            return
+        }
+        model.settings = s
     }
 
     private func commitCandidate(_ index: Int) {
+        let reading = composer.reading
         guard let text = composer.commit(candidateAt: index) else { return }
         let proxy = textDocumentProxy
         proxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
         proxy.unmarkText()
+        if composer.isEmpty { lastCommit = (text, reading) }
         updateComposition()
     }
 
     private func commitAll() {
         guard !composer.isEmpty else { return }
+        let reading = composer.reading
         let text = composer.commitAll()
         let proxy = textDocumentProxy
         proxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
         proxy.unmarkText()
-        candidateBar.show([], selected: nil)
+        lastCommit = (text, reading)
+        refreshBar()
     }
 
     // MARK: - 調整バー

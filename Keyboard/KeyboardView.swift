@@ -29,6 +29,11 @@ final class KeyboardView: UIView {
         didSet { relayout() }
     }
     var onKey: ((KeyDef, FlickDirection) -> Void)?
+    /// キーを押した瞬間（キー音用）
+    var onPress: (() -> Void)?
+    var mode: InputMode = .kana {
+        didSet { if mode != oldValue { relayout() } }
+    }
     /// 上に空けておく高さ（変換候補の帯の分）
     var topInset: CGFloat = 0 {
         didSet { if topInset != oldValue { relayout() } }
@@ -36,6 +41,8 @@ final class KeyboardView: UIView {
     weak var guideView: GuideOverlayView?
     /// 空白キー長押し中の左右移動。負の値で左へ。
     var onCursor: ((Int) -> Void)?
+    /// 空白キー長押し中の上下移動。負の値で上へ。
+    var onCursorVertical: ((Int) -> Void)?
 
     private(set) var keys: [LaidKey] = []
     private var keysBottom: CGFloat = 0
@@ -49,6 +56,7 @@ final class KeyboardView: UIView {
         var repeated = false
         var cursorMode = false
         var cursorAnchorX: CGFloat = 0
+        var cursorAnchorY: CGFloat = 0
         init(key: LaidKey, start: CGPoint) {
             self.key = key
             self.start = start
@@ -69,7 +77,7 @@ final class KeyboardView: UIView {
     }
 
     func requiredHeight(for width: CGFloat) -> CGFloat {
-        KeyboardLayout.make(settings: settings, width: width, topInset: topInset).height
+        KeyboardLayout.make(settings: settings, mode: mode, width: width, topInset: topInset).height
     }
 
     override func layoutSubviews() {
@@ -85,7 +93,7 @@ final class KeyboardView: UIView {
     private func relayout() {
         layoutWidth = bounds.width
         guard layoutWidth > 0 else { return }
-        let result = KeyboardLayout.make(settings: settings, width: layoutWidth, topInset: topInset)
+        let result = KeyboardLayout.make(settings: settings, mode: mode, width: layoutWidth, topInset: topInset)
         keys = result.keys
         keysBottom = result.keysBottom
         setNeedsDisplay()
@@ -100,7 +108,7 @@ final class KeyboardView: UIView {
 
         for k in keys {
             let isPressed = pressedIDs.contains(k.def.id)
-            let fill: UIColor = isPressed ? Palette.pressed : (k.def.isKana ? Palette.key : Palette.functionKey)
+            let fill: UIColor = isPressed ? Palette.pressed : (k.def.isCharacter ? Palette.key : Palette.functionKey)
 
             if let shadow = k.path.copy() as? UIBezierPath {
                 shadow.apply(CGAffineTransform(translationX: 0, y: 1))
@@ -113,11 +121,11 @@ final class KeyboardView: UIView {
             if k.isSector { fill.setStroke(); k.path.stroke() }
 
             let m = min(k.size.width, k.size.height)
-            let single = k.def.isKana && k.def.label.count == 1
+            let single = k.def.isCharacter && k.def.label.count == 1
             let ratio: CGFloat = single ? 0.44 : 0.28
             let font = UIFont.systemFont(ofSize: m * ratio, weight: .regular)
             var label = k.def.label
-            if cursorMode, case .space = k.def.action { label = "◀ ▶" }
+            if cursorMode, case .space = k.def.action { label = "◀ ▲▼ ▶" }
             drawText(label, center: k.center, rotation: textRotation(k), font: font,
                      color: isPressed ? Palette.pressedText : Palette.text, in: ctx)
         }
@@ -128,7 +136,7 @@ final class KeyboardView: UIView {
     private func updateGuides() {
         var list: [FlickGuide] = []
         for a in active.values {
-            if case .kana(let chars) = a.key.def.action {
+            if let chars = a.key.def.flickChars {
                 list.append(FlickGuide(center: a.key.center, size: a.key.size, rotation: textRotation(a.key),
                                        chars: chars, selected: direction(a.key, from: a.start, to: a.current)))
             }
@@ -175,7 +183,7 @@ final class KeyboardView: UIView {
     }
 
     private func direction(_ k: LaidKey, from s: CGPoint, to e: CGPoint) -> FlickDirection {
-        guard k.def.isKana else { return .tap }
+        guard k.def.isCharacter || k.def.isDelete else { return .tap }
         let dx: CGFloat = e.x - s.x
         let dy: CGFloat = e.y - s.y
         let lengthMM: CGFloat = hypot(dx, dy) / CGFloat(KeyboardSettings.ptPerMM)
@@ -215,10 +223,12 @@ final class KeyboardView: UIView {
                     guard let self, let a else { return }
                     a.cursorMode = true
                     a.cursorAnchorX = a.current.x
+                    a.cursorAnchorY = a.current.y
                     self.setNeedsDisplay()
                 }
             }
             active[t] = a
+            onPress?()
         }
         setNeedsDisplay()
     }
@@ -235,7 +245,13 @@ final class KeyboardView: UIView {
                     a.timer?.invalidate()
                     a.cursorMode = true
                     a.cursorAnchorX = a.start.x
+                    a.cursorAnchorY = a.start.y
                 }
+            }
+            if a.key.def.isDelete, !a.repeated {
+                // ⌫をフリックし始めたら長押しの連続削除はやめる
+                let movedMM: CGFloat = hypot(p.x - a.start.x, p.y - a.start.y) / CGFloat(KeyboardSettings.ptPerMM)
+                if movedMM >= CGFloat(settings.flickMinMM) { a.timer?.invalidate() }
             }
             if a.cursorMode {
                 let moved: CGFloat = p.x - a.cursorAnchorX
@@ -243,6 +259,13 @@ final class KeyboardView: UIView {
                 if steps != 0 {
                     onCursor?(steps)
                     a.cursorAnchorX += CGFloat(steps) * stepPt
+                }
+                let lineStep: CGFloat = 4.5 * CGFloat(KeyboardSettings.ptPerMM)
+                let movedY: CGFloat = p.y - a.cursorAnchorY
+                let lines = Int(movedY / lineStep)
+                if lines != 0 {
+                    onCursorVertical?(lines)
+                    a.cursorAnchorY += CGFloat(lines) * lineStep
                 }
             }
         }

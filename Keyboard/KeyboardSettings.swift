@@ -2,9 +2,14 @@ import Foundation
 import Combine
 
 enum KeyboardShape: String, Codable, CaseIterable {
-    case standard   // 画面いっぱいの格子（iPhone標準に近い）
-    case rightGrid  // 右寄せの格子（右手の親指用）
-    case fan        // 扇形（右手の親指用）
+    case standard   // 画面いっぱいの格子（両手、iPhone標準に近い）
+    case rightGrid  // 片手用の格子（右手なら右寄せ、左手なら左寄せ）
+    case fan        // 片手用の扇形
+}
+
+/// 片手で使うときの手
+enum Hand: String, Codable {
+    case right, left
 }
 
 /// キーボードの形と大きさ。キーボード拡張の中だけで保存する（無料アカウントでは App Groups が使えないため）。
@@ -22,6 +27,10 @@ struct KeyboardSettings: Codable, Equatable {
     var tiltDeg: Double = 0
     /// 扇形のとき、文字・フリックガイド・フリック方向をキーの傾きに合わせる
     var followFan: Bool = true
+    var hand: Hand = .right
+    /// 両手から片手に戻すときに使う形
+    var oneHandShape: KeyboardShape = .rightGrid
+    var keySound: Bool = true
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape
@@ -43,6 +52,9 @@ struct KeyboardSettings: Codable, Equatable {
         flickMinMM = (try? c.decode(Double.self, forKey: .flickMinMM)) ?? d.flickMinMM
         tiltDeg = (try? c.decode(Double.self, forKey: .tiltDeg)) ?? d.tiltDeg
         followFan = (try? c.decode(Bool.self, forKey: .followFan)) ?? d.followFan
+        hand = (try? c.decode(Hand.self, forKey: .hand)) ?? d.hand
+        oneHandShape = (try? c.decode(KeyboardShape.self, forKey: .oneHandShape)) ?? d.oneHandShape
+        keySound = (try? c.decode(Bool.self, forKey: .keySound)) ?? d.keySound
     }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。

@@ -95,9 +95,9 @@ struct TuningBar: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 Picker("形", selection: $model.settings.shape) {
-                    Text("標準").tag(KeyboardShape.standard)
-                    Text("右寄せ").tag(KeyboardShape.rightGrid)
-                    Text("扇形").tag(KeyboardShape.fan)
+                    Text("両手").tag(KeyboardShape.standard)
+                    Text("片手・格子").tag(KeyboardShape.rightGrid)
+                    Text("片手・扇形").tag(KeyboardShape.fan)
                 }
                 .pickerStyle(.segmented)
                 Button("閉じる", action: onClose)
@@ -107,6 +107,9 @@ struct TuningBar: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     chip("比べて決める", on: false, accent: true) { startCompare() }
+                    chip(model.settings.keySound ? "キー音：オン" : "キー音：オフ", on: model.settings.keySound) {
+                        model.settings.keySound.toggle()
+                    }
                     if model.settings.shape == .fan {
                         chip(model.settings.followFan ? "扇に沿わせる：オン" : "扇に沿わせる：オフ",
                              on: model.settings.followFan) {
