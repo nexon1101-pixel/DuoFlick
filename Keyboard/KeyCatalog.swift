@@ -27,7 +27,7 @@ enum KeyAction {
     case layer(InputMode) // 英字・記号の面を切り替える
     case numberPad        // 数字キー：右上で0〜4、右下で5〜9
     case gripSwitch       // 片手持ち⇄両手持ちの設定を切り替える
-    case widthToggle      // 英字・記号の全角⇄半角
+    case widthToggle      // 英字キーボードの日本語（ローマ字かな）⇄英字。パソコンの全角／半角キーと同じ
     case delete
     case space
     case newline
@@ -148,7 +148,7 @@ enum KeyCatalog {
                          action: .layer(mode == .qwerty ? .symbol : .qwerty)), weight: 1.2),
             (def: KeyDef(id: "globe", label: "", action: .nextKeyboard), weight: 1.2),
             (def: KeyDef(id: "mode", label: "あいう", action: .modeSwitch), weight: 1.2),
-            (def: KeyDef(id: "width", label: "半角", action: .widthToggle), weight: 1.2),
+            (def: KeyDef(id: "width", label: "A", action: .widthToggle), weight: 1.2),
             (def: KeyDef(id: "space", label: "space", action: .space), weight: 3.2),
             (def: KeyDef(id: "newline", label: "改行", action: .newline), weight: 2.0),
         ]

@@ -93,12 +93,13 @@ final class Composer {
         predictionPending = false
     }
 
-    func insert(_ s: String) {
+    /// roman が true なら、ローマ字としてかなに直しながら入れる（英字キーボードの日本語入力）
+    func insert(_ s: String, roman: Bool = false) {
         clearPredictions()
         selectedIndex = nil
         // 文節を区切っていた場合も、入力は末尾に足す
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
-        composing.insertAtCursorPosition(s, inputStyle: .direct)
+        composing.insertAtCursorPosition(s, inputStyle: roman ? .roman2kana : .direct)
         markDirty()
     }
 

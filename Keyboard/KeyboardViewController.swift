@@ -136,10 +136,10 @@ final class KeyboardViewController: UIInputViewController {
         lastKeyboardType = type
         switch type {
         case .emailAddress, .URL, .asciiCapable, .twitter, .webSearch:
-            fullWidth = false
+            japanese = false
             setMode(.qwerty)
         case .numberPad, .phonePad, .decimalPad, .numbersAndPunctuation, .namePhonePad, .asciiCapableNumberPad:
-            fullWidth = false
+            japanese = false
             setMode(.symbol)
         default:
             setMode(.kana)
@@ -220,6 +220,14 @@ final class KeyboardViewController: UIInputViewController {
                 composer.insert(s)
                 updateComposition()
             }
+        case .direct(let chars) where mode == .qwerty && japanese && isLetterKey(def):
+            // ローマ字で入力中の読みに足す。大文字はそのまま英字として入れる
+            let raw = pick(chars, dir)
+            let upper = shiftState != .off
+            if shiftState == .on { shiftState = .off }
+            if composer.selectedIndex != nil { commitAll() }
+            composer.insert(upper ? raw.uppercased() : raw, roman: !upper)
+            updateComposition()
         case .direct(let chars):
             commitAll()
             composer.clearPredictions()
@@ -252,7 +260,10 @@ final class KeyboardViewController: UIInputViewController {
         case .layer(let m):
             setMode(m)
         case .widthToggle:
-            fullWidth.toggle()
+            // パソコンの全角／半角キーと同じ：日本語（ローマ字かな）⇄英字
+            commitAll()
+            japanese.toggle()
+            shiftState = .off
             updateKeyLabels()
         case .numberPad:
             break
@@ -275,7 +286,7 @@ final class KeyboardViewController: UIInputViewController {
         case .space:
             if composer.isEmpty {
                 composer.clearPredictions()
-                proxy.insertText(mode == .kana || fullWidth ? "　" : " ")
+                proxy.insertText(mode == .kana || japanese ? "　" : " ")
                 refreshBar()
             } else {
                 composer.selectNext()
@@ -317,8 +328,8 @@ final class KeyboardViewController: UIInputViewController {
     private enum ShiftState { case off, on, locked }
     private var shiftState: ShiftState = .off
     private var lastShiftTap = Date.distantPast
-    /// 英字・記号を全角で入れる
-    private var fullWidth = false
+    /// 英字キーボードで日本語を打つ（ローマ字でかなにして変換する）
+    private var japanese = false
 
     private func updateShiftDisplay() {
         keyboardView.uppercase = shiftState != .off || (mode == .qwerty && shouldAutoCapitalize())
@@ -332,16 +343,7 @@ final class KeyboardViewController: UIInputViewController {
             if shiftState != .off || shouldAutoCapitalize() { out = s.uppercased() }
             if shiftState == .on { shiftState = .off }
         }
-        if fullWidth && mode != .kana { out = Self.toFullWidth(out) }
         return out
-    }
-
-    static func toFullWidth(_ s: String) -> String {
-        String(String.UnicodeScalarView(s.unicodeScalars.map { u in
-            if u.value >= 0x21 && u.value <= 0x7E, let f = Unicode.Scalar(u.value + 0xFEE0) { return f }
-            if u.value == 0x20 { return Unicode.Scalar(0x3000)! }
-            return u
-        }))
     }
 
     // MARK: - 続けてタップで切り替え（トグル入力）
@@ -399,9 +401,14 @@ final class KeyboardViewController: UIInputViewController {
         return true
     }
 
+    private func isLetterKey(_ def: KeyDef) -> Bool {
+        guard def.id.hasPrefix("q_"), let c = def.label.first else { return false }
+        return c.isLetter && c.isASCII
+    }
+
     /// 英字の面で、入力欄の設定に合わせて文頭などを大文字にするか
     private func shouldAutoCapitalize() -> Bool {
-        guard mode == .qwerty else { return false }
+        guard mode == .qwerty, !japanese else { return false }
         let before = textDocumentProxy.documentContextBeforeInput ?? ""
         switch textDocumentProxy.autocapitalizationType ?? .none {
         case .allCharacters:
@@ -628,9 +635,8 @@ final class KeyboardViewController: UIInputViewController {
                 disabled.insert("newline")
             }
         }
-        labels["width"] = fullWidth ? "全角" : "半角"
-        if fullWidth { accent.insert("width") }
-        if mode != .kana { labels["space"] = composer.isEmpty ? (fullWidth ? "全角空白" : "space") : "次候補" }
+        labels["width"] = japanese ? "あ" : "A"
+        if mode != .kana { labels["space"] = composer.isEmpty ? (japanese ? "空白" : "space") : "次候補" }
         keyboardView.labelOverrides = labels
         keyboardView.accentIDs = accent
         keyboardView.disabledIDs = disabled
