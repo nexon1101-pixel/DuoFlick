@@ -218,17 +218,10 @@ final class KeyboardViewController: UIInputViewController {
         switch def.action {
         case .kana(let chars):
             let s = pick(chars, dir)
-            if isPunctuation(s) && composer.isEmpty {
-                // 入力中でないときの句読点は、そのまま入れる（入力中なら読みに足して変換を続ける）
-                commitAll()
-                composer.clearPredictions()
-                proxy.insertText(s)
-                refreshBar()
-            } else {
-                if composer.selectedIndex != nil { commitAll() }
-                composer.insert(s)
-                updateComposition()
-            }
+            // 句読点も読みに足す（単独でも変換の候補が出る）。候補を選んでいたら先に確定する
+            if composer.selectedIndex != nil { commitAll() }
+            composer.insert(s)
+            updateComposition()
         case .direct(let chars) where def.id.hasPrefix("digit") && !isNumericField:
             // 数字も読みに足して変換する（全角・漢数字の候補が出る。候補を選んでいたら先に確定する）
             if composer.selectedIndex != nil { commitAll() }

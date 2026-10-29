@@ -211,7 +211,8 @@ final class KeyboardView: UIView {
         var list: [FlickGuide] = []
         for a in active.values {
             if a.key.def.isNumberPad {
-                list.append(numberGuide(a))
+                // 動かす前は、何も出さない（動かすと数字の配置が出る）
+                if a.numberStage != nil { list.append(numberGuide(a)) }
             } else if let chars = guideChars(a.key.def) {
                 list.append(FlickGuide(center: a.key.center, size: a.key.size, rotation: textRotation(a.key),
                                        chars: chars, selected: direction(a.key, from: a.start, to: a.current)))

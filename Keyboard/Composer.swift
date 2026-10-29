@@ -123,6 +123,11 @@ final class Composer {
         return extras[i - p]
     }
 
+    /// 句読点を1つだけ打ったときの、ほかの形（半角・全角）の候補
+    private static let punctuationVariants: [Character: [String]] = [
+        "、": ["，", ",", "､"], "。": ["．", ".", "｡"], "？": ["?"], "！": ["!"], "「": ["｢"], "」": ["｣"],
+    ]
+
     /// 数字だけの読みの、全角と漢数字の候補
     private static func numberVariants(_ s: String) -> [String] {
         var out: [String] = []
@@ -411,7 +416,10 @@ final class Composer {
         guard !isSegmented else { return }
         let reading = composing.convertTarget
         let have = Set(candidates.map(\.text))
-        if reading.allSatisfy({ $0.isASCII && $0.isNumber }) {
+        if reading.count == 1, let c = reading.first, let list = Self.punctuationVariants[c] {
+            extraAt = 1
+            for v in list where !have.contains(v) { extras.append(v) }
+        } else if reading.allSatisfy({ $0.isASCII && $0.isNumber }) {
             // 数字だけ：全角と漢数字を、先頭の候補のすぐあとに出す
             extraAt = 1
             for v in Self.numberVariants(reading) where !have.contains(v) && !extras.contains(v) { extras.append(v) }
