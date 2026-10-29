@@ -9,6 +9,7 @@ final class PanelModel: ObservableObject {
 struct MiddlePanel: View {
     @ObservedObject var model: PanelModel
     let onSelect: (Int) -> Void
+    var onSwipeDown: (() -> Void)? = nil
 
     var body: some View {
         ScrollView {
@@ -31,6 +32,15 @@ struct MiddlePanel: View {
                 }
             }
         }
+        // 下に素早くフリックしたら、キーボードを閉じる
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24).onEnded { v in
+                if v.translation.height > 60, abs(v.translation.width) < v.translation.height / 2,
+                   v.predictedEndTranslation.height > 200 {
+                    onSwipeDown?()
+                }
+            }
+        )
         .background(Color.gray.opacity(0.28))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }

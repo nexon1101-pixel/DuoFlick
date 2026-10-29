@@ -815,9 +815,13 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         if middleHost == nil {
-            let host = UIHostingController(rootView: MiddlePanel(model: panelModel) { [weak self] i in
+            let host = UIHostingController(rootView: MiddlePanel(model: panelModel, onSelect: { [weak self] i in
                 self?.selectFromBar(i)
-            })
+            }, onSwipeDown: { [weak self] in
+                // 真ん中を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
+                self?.commitAll()
+                self?.dismissKeyboard()
+            }))
             host.view.backgroundColor = .clear
             addChild(host)
             view.addSubview(host.view)

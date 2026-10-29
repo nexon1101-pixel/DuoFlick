@@ -41,7 +41,7 @@ enum KeyboardLayout {
                      width W: CGFloat, topInset: CGFloat = 0) -> LayoutResult {
         if mode != .kana {
             // 英字・記号は、片手でも普通の横並びにする
-            return place(qwerty(s, mode, W), s, W, 1, topInset, centered: true)
+            return place(qwerty(s, mode, W, split: grip == .two && s.splitKana), s, W, 1, topInset, centered: true)
         }
         if usesIOS(s, mode, grip, W) { return iosLayout(s, W, topInset, grip) }
         let avail = W - 2 * mm(s.marginMM)
@@ -99,8 +99,19 @@ enum KeyboardLayout {
     }
 
     /// 英字・記号の面。行ごとに幅の比率でキーを並べる（2段目の英字だけは1キー分の幅で中央に寄せる）
-    private static func qwerty(_ s: KeyboardSettings, _ mode: InputMode, _ W: CGFloat) -> Built {
-        let rows = KeyCatalog.qwertyRows(mode)
+    private static func qwerty(_ s: KeyboardSettings, _ mode: InputMode, _ W: CGFloat, split: Bool) -> Built {
+        var rows: [[(def: KeyDef?, weight: CGFloat)]] = KeyCatalog.qwertyRows(mode).map { row in
+            row.map { (def: Optional($0.def), weight: $0.weight) }
+        }
+        // 両手持ちの分割：上の3段の真ん中に空きを入れる（最下段はそのまま）
+        let gapW: CGFloat = 1.2
+        if split {
+            for r in 0..<min(3, rows.count) {
+                let at: Int = r == 2 ? (mode == .qwerty ? 6 : 4) : 5
+                rows[r].insert((def: nil, weight: gapW), at: min(at, rows[r].count))
+            }
+        }
+        let unitS: CGFloat = (W - 2 * mm(s.marginMM) - 10 * mm(s.gapMM)) / (10 + gapW)
         let g: CGFloat = mm(s.gapMM)
         let avail: CGFloat = W - 2 * mm(s.marginMM)
         let unit: CGFloat = (avail - 9 * g) / 10
@@ -111,7 +122,9 @@ enum KeyboardLayout {
             let n = CGFloat(row.count)
             let total: CGFloat = row.reduce(0) { $0 + $1.weight }
             var widths: [CGFloat]
-            if row.allSatisfy({ $0.weight == 1 }) && row.count < 10 {
+            if row.contains(where: { $0.def == nil }) {
+                widths = row.map { $0.weight * unitS }
+            } else if row.allSatisfy({ $0.weight == 1 }) && row.count < 10 {
                 widths = Array(repeating: unit, count: row.count)
             } else {
                 let per: CGFloat = (avail - (n - 1) * g) / total
@@ -121,8 +134,9 @@ enum KeyboardLayout {
             var x: CGFloat = (avail - rowW) / 2
             for (i, item) in row.enumerated() {
                 let rect = CGRect(x: x, y: y, width: widths[i], height: h)
+                guard let def = item.def else { x += widths[i] + g; continue }
                 raws.append(Raw(
-                    def: item.def,
+                    def: def,
                     points: [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
                              CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)],
                     isSector: false,
