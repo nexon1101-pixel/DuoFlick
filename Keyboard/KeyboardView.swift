@@ -79,8 +79,13 @@ final class KeyboardView: UIView {
     /// キーを押した瞬間（キー音用）
     var onPress: (() -> Void)?
     var mode: InputMode = .kana {
-        didSet { if mode != oldValue { relayout() } }
+        didSet { if mode != oldValue { numberLocked = false; relayout() } }
     }
+    /// 数字の固定中（123を2回続けてタップで入る。もう1回タップで解除）。かなキーが数字のままになる
+    private(set) var numberLocked = false {
+        didSet { if numberLocked != oldValue { setNeedsDisplay(); updateGuides() } }
+    }
+    private var lastNumberTap = Date.distantPast
     var grip: Grip = .one {
         didSet { if grip != oldValue { relayout() } }
     }
@@ -204,10 +209,13 @@ final class KeyboardView: UIView {
             if k.isSector { fill.setStroke(); k.path.stroke() }
 
             let m = min(k.size.width, k.size.height)
-            let single = (k.def.isCharacter && k.def.label.count == 1) || k.def.id == "number"
+            let lockedDigit: String? = numberLocked ? Self.numberKeyDigits[k.def.id] : nil
+            let single = (k.def.isCharacter && k.def.label.count == 1) || k.def.id == "number" || lockedDigit != nil
             let ratio: CGFloat = single ? 0.44 : 0.28
             let font = UIFont.systemFont(ofSize: m * ratio * CGFloat(settings.labelScale), weight: .regular)
             var label = labelOverrides[k.def.id] ?? k.def.label
+            if let d = lockedDigit { label = d }
+            if numberLocked, k.def.isNumberPad { label = "あ" }
             if uppercase, mode == .qwerty, k.def.id.hasPrefix("q_") { label = label.uppercased() }
             if case .shift = k.def.action { label = capsLock ? "⇪" : (uppercase ? "⬆︎" : "⇧") }
             if cursorMode, case .space = k.def.action { label = "◀ ▲▼ ▶" }
@@ -245,6 +253,7 @@ final class KeyboardView: UIView {
 
     /// フリックのガイドに出す文字。1方向しかないキー（英字など）は出さない
     private func guideChars(_ def: KeyDef) -> [String]? {
+        if numberLocked, Self.numberKeyDigits[def.id] != nil { return nil }
         if case .nextKeyboard = def.action { return ["", "定型文", "設定", "履歴", "絵文字"] }
         guard let chars = def.flickChars, chars.filter({ !$0.isEmpty }).count > 1 else { return nil }
         return chars
@@ -273,7 +282,7 @@ final class KeyboardView: UIView {
 
     /// 数字キーを押したまま少し動かしたら、かなキーを数字に書き換えて見せる。離したときに、指のあるキーの数字を入れる
     private func trackNumber(_ a: Active, _ p: CGPoint) {
-        guard a.numberStage == nil else { return }
+        guard a.numberStage == nil, !numberLocked else { return }
         let dx: CGFloat = p.x - a.start.x
         let dy: CGFloat = p.y - a.start.y
         let need: CGFloat = max(CGFloat(settings.flickMinMM) * CGFloat(KeyboardSettings.ptPerMM),
@@ -546,11 +555,25 @@ final class KeyboardView: UIView {
             guard let a = active.removeValue(forKey: t) else { continue }
             a.timer?.invalidate()
             if a.key.def.isNumberPad {
-                // タップだけでは何も入れない
+                // タップだけでは何も入れない。2回続けてタップすると数字を固定し、固定中にタップすると解除する
+                if a.numberStage == nil {
+                    let now = Date()
+                    if numberLocked {
+                        numberLocked = false
+                    } else if now.timeIntervalSince(lastNumberTap) < 0.4 {
+                        numberLocked = true
+                    }
+                    lastNumberTap = numberLocked ? .distantPast : now
+                }
                 if a.numberStage != nil, let k = numberKey(at: t.location(in: self)),
                    let digit = Self.numberKeyDigits[k.def.id] {
                     onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
                 }
+                continue
+            }
+            // 数字の固定中は、かなキーのタップがそのまま数字になる
+            if numberLocked, let digit = Self.numberKeyDigits[a.key.def.id] {
+                onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
                 continue
             }
             if !a.repeated && !a.cursorMode {

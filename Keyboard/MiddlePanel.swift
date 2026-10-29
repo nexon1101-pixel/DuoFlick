@@ -41,6 +41,9 @@ struct MiddlePanel: View {
                 }
             }
         )
+        .id(model.items.isEmpty)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .animation(.easeOut(duration: 0.18), value: model.items.isEmpty)
         .background(Color.gray.opacity(0.28))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }

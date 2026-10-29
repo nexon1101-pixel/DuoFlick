@@ -86,6 +86,7 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         let list = Array(items.prefix(Self.maxItems))
         // 同じ内容なら作り直さない（ちらつきと無駄な処理を防ぐ）
         if list == shownItems && selected == shownSelected { return }
+        let wasEmpty = shownItems.isEmpty
         shownItems = list
         shownSelected = selected
         for v in stack.arrangedSubviews {
@@ -109,6 +110,15 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
             b.setContentHuggingPriority(.required, for: .horizontal)
             b.addTarget(self, action: #selector(tapped(_:)), for: .touchUpInside)
             stack.addArrangedSubview(b)
+        }
+        // 候補が出始めるときは、上から下へスライドして出す
+        if wasEmpty, !list.isEmpty {
+            stack.alpha = 0
+            stack.transform = CGAffineTransform(translationX: 0, y: -14)
+            UIView.animate(withDuration: 0.18, delay: 0, options: .curveEaseOut) {
+                self.stack.alpha = 1
+                self.stack.transform = .identity
+            }
         }
         if let s = selected, s < stack.arrangedSubviews.count {
             layoutIfNeeded()

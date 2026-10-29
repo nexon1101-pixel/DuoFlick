@@ -761,6 +761,13 @@ final class KeyboardViewController: UIInputViewController {
             host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         listHost = host
+        // 上から下へスライドして出す
+        host.view.alpha = 0
+        host.view.transform = CGAffineTransform(translationX: 0, y: -24)
+        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut) {
+            host.view.alpha = 1
+            host.view.transform = .identity
+        }
         // 一覧を開いている間は、キーが透けて文字と重ならないよう、キーを隠す
         keyboardView.isHidden = true
         middleHost?.view.isHidden = true
