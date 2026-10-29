@@ -67,6 +67,10 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.guideView = guideView
         keyboardView.grip = model.grip
         keyboardView.settings = model.settings
+        keyboardView.onPinch = { [weak self] split in
+            guard let self, self.model.grip == .two, self.model.settings.splitKana != split else { return }
+            self.model.settings.splitKana = split
+        }
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
         keyboardView.onPress = { [weak self] in
             guard let self, self.model.settings.haptics, self.hasFullAccess else { return }

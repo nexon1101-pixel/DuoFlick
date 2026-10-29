@@ -131,6 +131,17 @@ final class KeyboardView: UIView {
         isMultipleTouchEnabled = true
         backgroundColor = .clear
         contentMode = .redraw
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
+        pinch.cancelsTouchesInView = true
+        addGestureRecognizer(pinch)
+    }
+
+    /// 両手持ちで、ピンチアウトしたらかなを左右に分け、ピンチインしたら元に戻す
+    var onPinch: ((Bool) -> Void)?
+    @objc private func pinched(_ g: UIPinchGestureRecognizer) {
+        guard g.state == .ended || g.state == .changed, grip == .two, mode == .kana else { return }
+        if g.scale > 1.25 { g.state = .ended; onPinch?(true) }
+        else if g.scale < 0.8 { g.state = .ended; onPinch?(false) }
     }
 
     required init?(coder: NSCoder) {

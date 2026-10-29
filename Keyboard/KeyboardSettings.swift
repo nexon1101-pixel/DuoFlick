@@ -53,8 +53,8 @@ struct KeyboardSettings: Codable, Equatable {
     var typoCorrection: Bool = false
     /// 変換待ち（読みに下線が出ている間）は、数字・⌫・確定・次候補のキー以外を押せなくする
     var lockWhileComposing: Bool = true
-    /// 内側画面の両手持ちで、かなを左右に分けて同じものを並べる
-    var splitKana: Bool = true
+    /// 両手持ちで、かなを左右に分けて同じものを並べる（ピンチアウトで分割、ピンチインで戻す）
+    var splitKana: Bool = false
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape

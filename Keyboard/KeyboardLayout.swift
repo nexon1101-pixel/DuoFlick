@@ -100,7 +100,7 @@ enum KeyboardLayout {
         // 左手のときは、列を逆順に作ってから左右反転する。こうするとキーの並び（あかさ…）は
         // そのままで、扇の開く向きや大きくなる側だけが左右逆になる。
         let left = isLeftHand(s)
-        let split = s.splitKana && grip == .two && s.shape == .standard && mode == .kana && W > 480
+        let split = s.splitKana && grip == .two && s.shape == .standard && mode == .kana
         let baseCols = split ? KeyCatalog.splitColumns(mode, grip: grip) : KeyCatalog.columns(mode, grip: grip)
         let cols = left ? Array(baseCols.reversed()) : baseCols
         let n = cols.count
