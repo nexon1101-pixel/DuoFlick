@@ -88,6 +88,7 @@ final class Composer {
     func clearPredictions() {
         predictions = []
         predictionBase = nil
+        predictionPending = false
     }
 
     func insert(_ s: String) {
@@ -191,9 +192,19 @@ final class Composer {
         return p.text
     }
 
+    /// 予測は確定の表示を先に済ませてから計算する（loadPredictionsIfNeeded で実行）
+    private var predictionPending = false
+
     private func startPredictions(after c: Candidate) {
         predictionBase = c
-        let list = converter.requestPostCompositionPredictionCandidates(leftSideCandidate: c, options: options)
+        predictions = []
+        predictionPending = true
+    }
+
+    func loadPredictionsIfNeeded() {
+        guard predictionPending, let base = predictionBase, composing.isEmpty else { return }
+        predictionPending = false
+        let list = converter.requestPostCompositionPredictionCandidates(leftSideCandidate: base, options: options)
         predictions = Array(list.prefix(10))
     }
 

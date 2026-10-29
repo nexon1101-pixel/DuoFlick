@@ -328,18 +328,48 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    // MARK: - 入力欄への反映（本家 azooKey と同じく、確定は insertText で下線付きの文字を置き換える）
+
+    /// 入力欄に下線付きの文字があるか
+    private var markedActive = false
+
+    private func showMarked(_ text: String) {
+        textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
+        markedActive = true
+    }
+
+    /// 下線付きの文字を消す（入力中の文字を全部消したとき）
+    private func clearMarked() {
+        guard markedActive else { return }
+        textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
+        textDocumentProxy.unmarkText()
+        markedActive = false
+    }
+
+    /// 下線付きの文字を、確定した文字で置き換える
+    private func insertCommitted(_ text: String) {
+        textDocumentProxy.insertText(text)
+        markedActive = false
+    }
+
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
     private func updateComposition() {
-        let proxy = textDocumentProxy
         if composer.isEmpty {
-            proxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
-            proxy.unmarkText()
+            clearMarked()
         } else {
-            let text = composer.markedText
-            proxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
+            showMarked(composer.markedText)
         }
         refreshBar()
         scheduleCandidates()
+    }
+
+    /// 確定の文字を先に入れてから、次の予測を計算する
+    private func schedulePredictions() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.composer.loadPredictionsIfNeeded()
+            if self.composer.isEmpty { self.refreshBar() }
+        }
     }
 
     /// 打鍵が続いている間は変換を待ち、指が止まったらまとめて変換する
@@ -373,28 +403,31 @@ final class KeyboardViewController: UIInputViewController {
             textDocumentProxy.insertText(text)
             lastCommit = nil
             refreshBar()
+            schedulePredictions()
         }
     }
 
     private func commitCandidate(_ index: Int) {
         let reading = composer.reading
         guard let text = composer.commit(candidateAt: index) else { return }
-        let proxy = textDocumentProxy
-        proxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
-        proxy.unmarkText()
-        if composer.isEmpty { lastCommit = (text, reading) }
-        updateComposition()
+        insertCommitted(text)
+        if composer.isEmpty {
+            lastCommit = (text, reading)
+            refreshBar()
+            schedulePredictions()
+        } else {
+            updateComposition()
+        }
     }
 
     private func commitAll() {
         guard !composer.isEmpty else { return }
         let reading = composer.reading
         let text = composer.commitAll()
-        let proxy = textDocumentProxy
-        proxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
-        proxy.unmarkText()
+        insertCommitted(text)
         lastCommit = (text, reading)
         refreshBar()
+        schedulePredictions()
     }
 
     // MARK: - 単語登録
