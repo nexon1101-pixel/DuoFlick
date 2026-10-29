@@ -76,6 +76,7 @@ struct TuningBar: View {
     let onClipboard: () -> Void
     let offsetText: () -> String
     let onResetOffset: () -> Void
+    let onOptimize: () -> Void
     @State private var diagnosis: String?
     @State private var showThemes = false
     @State private var showPresets = false
@@ -138,7 +139,7 @@ struct TuningBar: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    chip("比べて決める", on: false, accent: true) { startCompare() }
+                    chip("打ち比べで最適化", on: false, accent: true) { onOptimize() }
                     if model.settings.shape != .standard {
                         chip(model.settings.hand == .right ? "片手：右手" : "片手：左手", on: true) {
                             model.settings.hand = model.settings.hand == .right ? .left : .right

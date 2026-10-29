@@ -24,6 +24,9 @@ struct TextListPanel: View {
                     Button(addTitle, action: onAdd).font(.footnote)
                 }
                 if !store.items.isEmpty {
+                    if editing {
+                        Button("固定以外を消す") { store.removeAll() }.font(.footnote)
+                    }
                     Button(editing ? "完了" : "編集") { editing.toggle() }.font(.footnote)
                 }
                 Button("閉じる", action: onClose)
@@ -52,9 +55,14 @@ struct TextListPanel: View {
                         ForEach(Array(store.items.enumerated()), id: \.offset) { i, text in
                             HStack(spacing: 8) {
                                 Button { onSelect(text) } label: {
-                                    Text(text)
+                                    HStack(spacing: 6) {
+                                        if store.pinned.contains(text) {
+                                            Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.orange)
+                                        }
+                                        Text(text)
                                         .font(.body)
                                         .lineLimit(2)
+                                    }
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 8)
@@ -64,6 +72,8 @@ struct TextListPanel: View {
                                 .buttonStyle(.plain)
                                 .disabled(editing)
                                 if editing {
+                                    Button(store.pinned.contains(text) ? "固定を外す" : "固定") { store.togglePin(text) }
+                                        .font(.caption)
                                     if let secondaryTitle, let onSecondary {
                                         Button(secondaryTitle) { onSecondary(text) }.font(.caption)
                                     }

@@ -8,6 +8,9 @@ final class KeyboardViewController: UIInputViewController {
     private let candidateBar = CandidateBar()
     private let guideView = GuideOverlayView()
     private let composer = Composer()
+    private let optimizer = OptimizerModel()
+    /// 打ち比べの最中（キー入力はお題の採点に使い、入力欄には入れない）
+    private var optimizing = false
     private let phrases = PhraseStore()
     private let clipboard = ClipboardStore()
     private let haptic = UIImpactFeedbackGenerator(style: .light)
@@ -159,6 +162,17 @@ final class KeyboardViewController: UIInputViewController {
     private func handle(_ def: KeyDef, _ dir: FlickDirection) {
         if let reg = register {
             handleRegisterKey(def, dir, reg)
+            return
+        }
+        if optimizing {
+            switch def.action {
+            case .kana(let chars), .direct(let chars):
+                optimizer.input(pick(chars, dir))
+            case .settings:
+                stopOptimizing()
+            default:
+                break
+            }
             return
         }
         let proxy = textDocumentProxy
@@ -502,6 +516,23 @@ final class KeyboardViewController: UIInputViewController {
         schedulePredictions()
     }
 
+    // MARK: - 打ち比べで最適化
+
+    private func startOptimizing() {
+        commitAll()
+        setMode(.kana)
+        optimizer.start(model: model)
+        optimizing = true
+        let panel = OptimizerPanel(opt: optimizer) { [weak self] in self?.stopOptimizing() }
+        showTop(UIHostingController(rootView: panel), height: 128)
+    }
+
+    private func stopOptimizing() {
+        if optimizing { optimizer.finish() }
+        optimizing = false
+        hideTop()
+    }
+
     // MARK: - 定型文・クリップボード
 
     private var panelHost: UIHostingController<TextListPanel>?
@@ -647,7 +678,8 @@ final class KeyboardViewController: UIInputViewController {
                 self?.showClipboard()
             },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
-            onResetOffset: { [weak self] in self?.keyboardView.resetOffset() })
+            onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
+            onOptimize: { [weak self] in self?.startOptimizing() })
         showTop(UIHostingController(rootView: bar), height: tuningHeight)
     }
 
