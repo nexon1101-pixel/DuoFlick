@@ -78,6 +78,9 @@ jobs:
           APPEX=Payload/DuoFlick.app/PlugIns/DuoFlickKeyboard.appex
           du -sh Payload/DuoFlick.app "$APPEX" || true
           ls -la "$APPEX" || true
+          # SKK 辞書（SkkDict）がキーボードに入っていなければ失敗させる
+          test -f "$APPEX/SkkDict/user.louds" && test -f "$APPEX/SkkDict/user0.loudstxt3" || { echo "SkkDict がありません"; exit 1; }
+          echo "SkkDict files: $(ls "$APPEX/SkkDict" | wc -l)"
           ls "$APPEX"/Frameworks 2>/dev/null || echo "no Frameworks in appex"
           ls Payload/DuoFlick.app/Frameworks 2>/dev/null || echo "no Frameworks in app"
           otool -L "$APPEX/DuoFlickKeyboard" | head -40 || true
