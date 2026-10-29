@@ -64,6 +64,16 @@ sources = [
     ("SKK-JISYO.L",          CID_PROPER, -9.0, kind_L),
 ]
 seen, entries = set(), []
+# 自分で選んだネット系の語（tools/net_words.tsv：読み<TAB>単語）。SKK より上の順位で足す
+here = os.path.dirname(os.path.abspath(__file__))
+n0 = 0
+for line in open(os.path.join(here, "net_words.tsv"), encoding="utf8"):
+    if "\t" not in line: continue
+    r, w = line.rstrip("\n").split("\t", 1)
+    k = kata(r)
+    if w == k or not all(c in char2id for c in k) or (k, w) in have or (k, w) in seen: continue
+    seen.add((k, w)); entries.append((k, w, CID_PROPER, CID_PROPER, MID, -6.0)); n0 += 1
+print("net_words.tsv", n0)
 for name, cid, score, flt in sources:
     n0 = len(entries)
     for k, w in load(name):

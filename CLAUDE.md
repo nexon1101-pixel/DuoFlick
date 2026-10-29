@@ -91,7 +91,14 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - Keyboard/SkkDict/ に、AzooKey の辞書にない語（SKK-JISYO.L の一部・propernoun・jinmei・station、約5万語）を、エンジンの「user」辞書の形式（user.louds / user.loudschars2 / userN.loudstxt3）で入れてある。Composer が sharedContainerURL をこのフォルダにしていて、エンジンが読み取りだけする（アプリのフォルダ参照、project.yml の type: folder）
 - 動的ユーザー辞書（importDynamicUserDict）は、検索のたびに全語を端から調べる作りなので、数千語を超えると入力が遅くなる。多い語はここに入れず、この user 辞書の形式にする
 - 作り直し：tools/make_skk_dict.py（SKK 辞書と、AzooKey の azooKey_dictionary_storage を渡す。書き出しは tools/louds_writer.py）。AzooKey を上げたときは、charID.chid と形式が変わっていないか確認する
+- tools/net_words.tsv（読み<TAB>単語）に、ネット系の語を自分で選んで足せる（SNS・IT・ゲーム・VTuberなど）。make_skk_dict.py が同じ辞書に入れる。AzooKey に既にある語は自動で除く。足したら make_skk_dict.py を動かし直して Keyboard/SkkDict をコミットする
+- NEologd（Apache 2.0）も調べたが、人気の目安がなく、バンド名や人名が大量に混ざる（英字名だけで約10万語）ため入れていない
 - ライセンスは tools/SKK-LICENSE.md（主に GPL v2 以降）。製品名など英字・カタカナの語は SKK には少ないので、BuiltinWords に足すか、NEologd（Apache 2.0）から選ぶ
+
+## 選んだ語の記憶（v0.23.0）
+
+- AzooKey の学習だけでは、一度選んだ語の順位が上がりにくかった。Composer が「読み → 選んだ語（新しい順、5つまで）」を UserDefaults（DuoFlick.chosen.v1）に持ち、いちばん上の候補と同じ読みの語があれば先頭に出す（prioritizeChosen）
+- 学習の保存は、キーボードを閉じるときだけだったので、確定の3秒後にも保存する（閉じる前に終了させられても残るように）
 
 ## アプリ本体の設定画面（v0.20.0）
 

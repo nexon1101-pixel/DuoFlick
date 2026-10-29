@@ -268,6 +268,8 @@ final class Composer {
         composing.prefixComplete(composingCount: c.composingCount)
         selectedIndex = nil
         converter.updateLearningData(c)
+        remember(c)
+        scheduleSave()
         if composing.isEmpty {
             converter.stopComposition()
             candidates = []
@@ -299,6 +301,7 @@ final class Composer {
         guard index < predictions.count, let base = predictionBase else { return nil }
         let p = predictions[index]
         converter.updateLearningData(base, with: p)
+        scheduleSave()
         if p.isTerminal {
             clearPredictions()
         } else {
@@ -376,10 +379,58 @@ final class Composer {
         return lines.joined(separator: "\n")
     }
 
-    /// 学習内容を保存する（キーボードを閉じるとき）
+    /// 学習内容を保存する（キーボードを閉じるとき、と確定の3秒後）
     func save() {
+        saveTask?.cancel()
         guard converterReady else { return }
         converter.sendToDicdataStore(.closeKeyboard)
+    }
+
+    /// 確定のあと少し待って保存する（キーボードが閉じる前に終了させられても、覚えた語が残るように）
+    private var saveTask: Task<Void, Never>?
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.save()
+        }
+    }
+
+    // MARK: 選んだ語の記憶（読み → 選んだ順。エンジンの学習だけでは順位が上がりにくいので、こちらで先頭に出す）
+
+    private static let chosenKey = "DuoFlick.chosen.v1"
+    private var chosen: [String: [String]] = (UserDefaults.standard.dictionary(forKey: Composer.chosenKey) as? [String: [String]]) ?? [:]
+
+    private func readingKey(_ c: Candidate) -> String {
+        c.data.map(\.ruby).joined()
+    }
+
+    private func remember(_ c: Candidate) {
+        let key = readingKey(c)
+        guard !key.isEmpty else { return }
+        var list = chosen[key] ?? []
+        list.removeAll { $0 == c.text }
+        list.insert(c.text, at: 0)
+        chosen[key] = Array(list.prefix(5))
+        if chosen.count > 4000 {
+            for k in Array(chosen.keys.prefix(500)) where k != key { chosen.removeValue(forKey: k) }
+        }
+        UserDefaults.standard.set(chosen, forKey: Self.chosenKey)
+    }
+
+    /// いちばん上の候補と同じ読みで、前に選んだ語があれば、新しい順に先頭へ出す
+    private func prioritizeChosen(_ list: [Candidate]) -> [Candidate] {
+        guard let top = list.first else { return list }
+        let key = readingKey(top)
+        guard let texts = chosen[key], !texts.isEmpty else { return list }
+        var front: [Candidate] = []
+        for t in texts {
+            if let c = list.first(where: { $0.text == t && readingKey($0) == key }) { front.append(c) }
+        }
+        guard !front.isEmpty else { return list }
+        let used = Set(front.map(\.text))
+        return front + list.filter { !(used.contains($0.text) && readingKey($0) == key) }
     }
 
     /// 変換候補が今の読みに追いついていないか
@@ -418,7 +469,7 @@ final class Composer {
         let target = isSegmented ? composing.prefixToCursorPosition() : composing
         var requestOptions = options
         requestOptions.needTypoCorrection = typoCorrection
-        candidates = converter.requestCandidates(target, options: requestOptions).mainResults
+        candidates = prioritizeChosen(converter.requestCandidates(target, options: requestOptions).mainResults)
         extras = []
         guard !isSegmented else { return }
         let reading = composing.convertTarget
