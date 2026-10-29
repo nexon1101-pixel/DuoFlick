@@ -40,6 +40,9 @@ enum Palette {
     static let accent = dynamic(0x007AFF, 0x0A84FF)
     static let shadow = dynamic(0x898A8D, 0x111214)
     static let guide = dynamic(0xFFFFFF, 0x77787D)
+    /// 押した直後に周りへ出す文字の下地と文字色（キーより淡くして区別する）
+    static let guideSoft = dynamic(0xF4F5F7, 0x5A5B60)
+    static let guideText = dynamic(0x555A63, 0xD8D9DD)
 }
 
 extension UIColor {

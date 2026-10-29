@@ -76,63 +76,70 @@ final class GuideOverlayView: UIView {
         ctx.restoreGState()
     }
 
-    /// 押した直後：周りの文字を、少し小さめのキーで十字に並べる
+    /// 押した直後：周りの文字を、少し小さめの淡い色のキーで十字に並べる（押したキー自体は下のキーボードに描かれている）
     private func drawCross(_ g: FlickGuide, cells: [(FlickDirection, CGFloat, CGFloat)], w: CGFloat, h: CGFloat) {
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        var items: [(String, CGRect, Bool)] = []
         for (d, ox, oy) in cells {
             let ch = g.chars[d.rawValue]
             if ch.isEmpty { continue }
-            let selected = d == g.selected
-            let r = CGRect(x: ox * w - w / 2, y: oy * h - h / 2, width: w, height: h).insetBy(dx: 2, dy: 2)
-            let p = UIBezierPath(roundedRect: r, cornerRadius: min(r.width, r.height) * 0.22)
-            if selected { Palette.pressed.setFill() } else { Palette.guide.setFill() }
-            p.fill()
-            Palette.shadow.setStroke()
-            p.lineWidth = 0.5
-            p.stroke()
-            let color: UIColor = selected ? Palette.pressedText : Palette.text
-            drawLabel(ch, in: r, size: min(w, h) * (ch.count > 1 ? 0.26 : 0.46), color: color)
+            // 文字キーでは、真ん中は押したキーそのものなので描かない（数字の枠は描く）
+            if d == .tap && !g.keepCross { continue }
+            let r = CGRect(x: ox * w - w / 2, y: oy * h - h / 2, width: w, height: h).insetBy(dx: 4, dy: 4)
+            items.append((ch, r, d == g.selected && g.keepCross))
+        }
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: 1), blur: 4, color: UIColor.black.withAlphaComponent(0.3).cgColor)
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        for (_, r, selected) in items {
+            (selected ? Palette.pressed : Palette.guideSoft).setFill()
+            UIBezierPath(roundedRect: r, cornerRadius: min(r.width, r.height) * 0.22).fill()
+        }
+        ctx.endTransparencyLayer()
+        ctx.restoreGState()
+        for (ch, r, selected) in items {
+            let color: UIColor = selected ? Palette.pressedText : Palette.guideText
+            drawLabel(ch, in: r, size: min(w, h) * (ch.count > 1 ? 0.26 : 0.4), color: color)
         }
     }
 
-    /// 方向を選んだとき：押したキーから選んだ方向へ伸びる吹き出しに、選んだ文字を大きく出す
+    /// 方向を選んだとき：押したキーの縁から選んだ方向へ伸びる矢印形に、選んだ文字を大きく出す（iOS標準と同じ形）
     private func drawBalloon(_ ch: String, dx: CGFloat, dy: CGFloat, w: CGFloat, h: CGFloat, in ctx: CGContext) {
-        // 吹き出しの頭（選んだ方向のキーより少し大きい）
-        let headW: CGFloat = w * 1.15
-        let headH: CGFloat = h * 1.15
-        let headCenter = CGPoint(x: dx * w * 1.05, y: dy * h * 1.05)
-        let head = CGRect(x: headCenter.x - headW / 2, y: headCenter.y - headH / 2, width: headW, height: headH)
-        // 押したキーの縁から頭へつなぐ首。キー側を細く、頭側を太くする
-        let neck = UIBezierPath()
-        if dx != 0 {
-            let x0: CGFloat = dx * w * 0.5
-            let x1: CGFloat = dx > 0 ? head.minX + 2 : head.maxX - 2
-            neck.move(to: CGPoint(x: x0, y: -h * 0.28))
-            neck.addLine(to: CGPoint(x: x1, y: -headH * 0.42))
-            neck.addLine(to: CGPoint(x: x1, y: headH * 0.42))
-            neck.addLine(to: CGPoint(x: x0, y: h * 0.28))
-        } else {
-            let y0: CGFloat = dy * h * 0.5
-            let y1: CGFloat = dy > 0 ? head.minY + 2 : head.maxY - 2
-            neck.move(to: CGPoint(x: -w * 0.28, y: y0))
-            neck.addLine(to: CGPoint(x: -headW * 0.42, y: y1))
-            neck.addLine(to: CGPoint(x: headW * 0.42, y: y1))
-            neck.addLine(to: CGPoint(x: w * 0.28, y: y0))
-        }
-        neck.close()
-        let headPath = UIBezierPath(roundedRect: head, cornerRadius: min(headW, headH) * 0.24)
+        // 右向きを基準に作ってから、選んだ方向へ回す
+        let along: CGFloat = dx != 0 ? w : h      // 伸びる向きの長さ
+        let across: CGFloat = dx != 0 ? h : w     // 幅
+        let a: CGFloat = along * 0.42
+        let b: CGFloat = along * 1.5
+        let tip: CGFloat = along * 1.82
+        let half: CGFloat = across * 0.5
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: a, y: -half))
+        path.addLine(to: CGPoint(x: b, y: -half))
+        path.addLine(to: CGPoint(x: tip, y: 0))
+        path.addLine(to: CGPoint(x: b, y: half))
+        path.addLine(to: CGPoint(x: a, y: half))
+        path.close()
+        path.lineJoinStyle = .round
+        path.lineWidth = 10   // 角を丸く見せるため、同じ色の太い線で縁取る
+        let angle: CGFloat = atan2(dy, dx)
 
-        // 影を付けて、キーの上に浮いているように見せる
         ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: 1), blur: 4, color: UIColor.black.withAlphaComponent(0.35).cgColor)
+        ctx.rotate(by: angle)
+        ctx.setShadow(offset: CGSize(width: 0, height: 1), blur: 5, color: UIColor.black.withAlphaComponent(0.35).cgColor)
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         Palette.guide.setFill()
-        headPath.fill()
-        neck.fill()
+        Palette.guide.setStroke()
+        path.stroke()
+        path.fill()
+        ctx.endTransparencyLayer()
         ctx.restoreGState()
-        Palette.guide.setFill()
-        headPath.fill()
-        neck.fill()
 
-        drawLabel(ch, in: head, size: min(headW, headH) * (ch.count > 1 ? 0.3 : 0.56), color: Palette.text)
+        // 文字は回さずに、矢印の太い部分の中央へ置く
+        let m: CGFloat = (a + b) / 2 + along * 0.05
+        let center = CGPoint(x: dx * m, y: dy * m)
+        let size: CGFloat = across * (ch.count > 1 ? 0.32 : 0.6)
+        drawLabel(ch, in: CGRect(x: center.x - across / 2, y: center.y - across / 2, width: across, height: across),
+                  size: size, color: Palette.text)
     }
 
     private func drawLabel(_ ch: String, in r: CGRect, size: CGFloat, color: UIColor) {
