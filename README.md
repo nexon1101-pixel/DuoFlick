@@ -69,3 +69,8 @@ Mac も有料の Apple Developer Program も使わずに、次の流れで iPhon
 
 - かな漢字変換：[AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)（MIT License）
 - 辞書データ：[azooKey_dictionary_storage](https://github.com/ensan-hcl/azooKey_dictionary_storage)（Apache License 2.0）
+
+## 辞書について
+
+- かな漢字変換は AzooKey（MIT License）を使っています。
+- 固有名詞・人名・駅名などを補うため、SKK 辞書から選んだ語を同梱しています。出どころとライセンスは `tools/SKK-LICENSE.md` を見てください。

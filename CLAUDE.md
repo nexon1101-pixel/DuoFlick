@@ -86,6 +86,13 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 
 - Keyboard/BuiltinWords.swift に「読み,単語」を書き足していくと、変換候補に出る（例：えあたぐ→AirTag、エアタグ）。製品名・サービス名・英語表記が中心。Composer の importUserWords で、ユーザー辞書（value -5）より少し低い -7 で変換エンジンに渡す。足りない単語が見つかったら、ここに足す
 
+## 同梱の SKK 辞書（v0.22.0）
+
+- Keyboard/SkkDict/ に、AzooKey の辞書にない語（SKK-JISYO.L の一部・propernoun・jinmei・station、約5万語）を、エンジンの「user」辞書の形式（user.louds / user.loudschars2 / userN.loudstxt3）で入れてある。Composer が sharedContainerURL をこのフォルダにしていて、エンジンが読み取りだけする（アプリのフォルダ参照、project.yml の type: folder）
+- 動的ユーザー辞書（importDynamicUserDict）は、検索のたびに全語を端から調べる作りなので、数千語を超えると入力が遅くなる。多い語はここに入れず、この user 辞書の形式にする
+- 作り直し：tools/make_skk_dict.py（SKK 辞書と、AzooKey の azooKey_dictionary_storage を渡す。書き出しは tools/louds_writer.py）。AzooKey を上げたときは、charID.chid と形式が変わっていないか確認する
+- ライセンスは tools/SKK-LICENSE.md（主に GPL v2 以降）。製品名など英字・カタカナの語は SKK には少ないので、BuiltinWords に足すか、NEologd（Apache 2.0）から選ぶ
+
 ## アプリ本体の設定画面（v0.20.0）
 
 - アプリのホーム →「設定を開く」で、配置・入力・変換の設定（SharedPrefs：iosLayout、lockWhileComposing、typoCorrection、toggleTap、haptics、autoCorrect、labelScale）を変える。「キーボードに反映する」を押すと、JSON を印（DUOFLICK-SETTINGS:）つきでクリップボードにコピーし、次にキーボードを開いたとき（フルアクセスが必要）に読み込んで、保存してある全部の設定（画面・持ち方ごと）に反映する。読んだらクリップボードは空にする

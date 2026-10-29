@@ -32,6 +32,8 @@ final class Composer {
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory
         let dir = base.appendingPathComponent("DuoFlickLearning", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        // SKK 辞書から作った同梱の辞書（user.louds など）。エンジンは sharedContainerURL の中の「user」を読む（読み取りだけ）
+        let skkDict = Bundle.main.url(forResource: "SkkDict", withExtension: nil) ?? dir
         return ConvertRequestOptions.withDefaultDictionary(
             N_best: 10,
             needTypoCorrection: false,
@@ -40,7 +42,7 @@ final class Composer {
             keyboardLanguage: .ja_JP,
             learningType: .inputAndOutput,
             memoryDirectoryURL: dir,
-            sharedContainerURL: dir,
+            sharedContainerURL: skkDict,
             metadata: .init(versionString: "DuoFlick")
         )
     }()
