@@ -752,6 +752,9 @@ final class KeyboardViewController: UIInputViewController {
             host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         listHost = host
+        // 一覧を開いている間は、キーが透けて文字と重ならないよう、キーを隠す
+        keyboardView.isHidden = true
+        middleHost?.view.isHidden = true
         candidateBar.setExpand(visible: true, expanded: true)
     }
 
@@ -761,6 +764,8 @@ final class KeyboardViewController: UIInputViewController {
         host.view.removeFromSuperview()
         host.removeFromParent()
         listHost = nil
+        keyboardView.isHidden = false
+        middleHost?.view.isHidden = false
     }
 
     /// 「@」のあとに出す、よく使うメールのドメイン
