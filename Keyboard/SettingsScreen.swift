@@ -60,6 +60,8 @@ struct SettingsActions {
     let diagnose: () -> String
     let offsetText: () -> String
     let onResetOffset: () -> Void
+    /// iOSのユーザ辞書を取り込む。終わったら結果の文を渡す
+    let importSystemDictionary: (@escaping (String) -> Void) -> Void
 }
 
 /// 地球儀キーの上フリックで開く設定画面。キーボードの場所いっぱいに一覧で出す。
@@ -73,6 +75,7 @@ struct SettingsScreen: View {
     @State private var diagnosis = ""
     @State private var confirmReset = false
     @State private var offset = ""
+    @State private var importMessage = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -163,6 +166,7 @@ struct SettingsScreen: View {
                 Toggle("押したときの振動", isOn: $model.settings.haptics)
                 Toggle("続けてタップで文字を切り替え", isOn: $model.settings.toggleTap)
                 Toggle("ずれ補正（押す位置と斜めのくせ）", isOn: $model.settings.autoCorrect)
+                Toggle("打ち間違いの候補（試験的）", isOn: $model.settings.typoCorrection)
                 Button {
                     actions.onResetOffset()
                     offset = actions.offsetText()
@@ -181,6 +185,16 @@ struct SettingsScreen: View {
             Section("辞書") {
                 row("単語登録", detail: "選択した語を登録", action: actions.onRegister)
                 row("辞書の一覧", detail: "\(dictionary.words.count)語") { page = .dictionary }
+                Button {
+                    importMessage = "読み込み中…"
+                    actions.importSystemDictionary { importMessage = $0 }
+                } label: {
+                    HStack {
+                        Text("iOSのユーザ辞書を取り込む")
+                        Spacer()
+                        Text(importMessage).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
             }
             Section("見た目") {
                 row("配色", detail: themeName) { page = .themes }

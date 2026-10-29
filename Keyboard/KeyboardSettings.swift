@@ -49,6 +49,8 @@ struct KeyboardSettings: Codable, Equatable {
     var autoCorrect: Bool = true
     /// 同じキーを続けてタップすると文字が切り替わる（あ→い→う…、iOS標準のトグル入力）。初期はオフ
     var toggleTap: Bool = false
+    /// 打ち間違いを直した候補も出す（変換エンジンの機能）。初期はオフ
+    var typoCorrection: Bool = false
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape
@@ -78,6 +80,7 @@ struct KeyboardSettings: Codable, Equatable {
         haptics = (try? c.decode(Bool.self, forKey: .haptics)) ?? d.haptics
         autoCorrect = (try? c.decode(Bool.self, forKey: .autoCorrect)) ?? d.autoCorrect
         toggleTap = (try? c.decode(Bool.self, forKey: .toggleTap)) ?? d.toggleTap
+        typoCorrection = (try? c.decode(Bool.self, forKey: .typoCorrection)) ?? d.typoCorrection
     }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。

@@ -29,6 +29,23 @@ final class UserDictionaryStore: ObservableObject {
         save()
     }
 
+    /// iOSのユーザ辞書（単語とよみ）を取り込む。かなのよみがあるものだけ、まだなければ末尾に足す。足した数を返す
+    func importSystem(_ items: [(word: String, reading: String)]) -> Int {
+        var count = 0
+        for item in items {
+            let w = item.word.trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw = item.reading.trimmingCharacters(in: .whitespacesAndNewlines)
+            let r = raw.applyingTransform(.hiraganaToKatakana, reverse: true) ?? raw
+            let isKana = !r.isEmpty && r.unicodeScalars.allSatisfy { (0x3041...0x3096).contains($0.value) || $0.value == 0x30FC }
+            guard !w.isEmpty, isKana, w != r else { continue }
+            if words.contains(where: { $0.word == w && $0.reading == r }) { continue }
+            words.append(UserWord(word: w, reading: r))
+            count += 1
+        }
+        if count > 0 { save() }
+        return count
+    }
+
     func remove(_ item: UserWord) {
         words.removeAll { $0.id == item.id }
         save()

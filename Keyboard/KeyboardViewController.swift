@@ -578,6 +578,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
     private func updateComposition() {
+        composer.typoCorrection = model.settings.typoCorrection
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()
@@ -912,7 +913,16 @@ final class KeyboardViewController: UIInputViewController {
             onClipboard: { [weak self] in self?.showClipboard() },
             diagnose: { [weak self] in self?.composer.diagnostics() ?? "" },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
-            onResetOffset: { [weak self] in self?.keyboardView.resetOffset() })
+            onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
+            importSystemDictionary: { [weak self] done in
+                self?.requestSupplementaryLexicon { lexicon in
+                    DispatchQueue.main.async {
+                        let items = lexicon.entries.map { (word: $0.documentText, reading: $0.userInput) }
+                        let n = self?.dictionary.importSystem(items) ?? 0
+                        done(n > 0 ? "\(n)語を取り込みました" : "取り込める語がありませんでした")
+                    }
+                }
+            })
         showPanel(SettingsScreen(model: model, dictionary: dictionary, actions: actions))
     }
 

@@ -329,6 +329,8 @@ final class Composer {
 
     /// 変換候補が今の読みに追いついていないか
     private(set) var needsRefresh = false
+    /// 打ち間違いを直した候補も出すか（設定で切り替える）
+    var typoCorrection = false
 
     /// 読みが変わったら、後でまとめて変換する（打鍵のたびに変換すると重いため）。
     /// 変換が終わるまでは前の候補を出したままにして、帯がちらつかないようにする。
@@ -359,7 +361,9 @@ final class Composer {
             return
         }
         let target = isSegmented ? composing.prefixToCursorPosition() : composing
-        candidates = converter.requestCandidates(target, options: options).mainResults
+        var requestOptions = options
+        requestOptions.needTypoCorrection = typoCorrection
+        candidates = converter.requestCandidates(target, options: requestOptions).mainResults
         if rawValid, !isSegmented, !rawRoman.isEmpty, rawRoman.allSatisfy({ $0.isASCII }),
            rawRoman != composing.convertTarget, !candidates.contains(where: { $0.text == rawRoman }) {
             extraText = rawRoman
