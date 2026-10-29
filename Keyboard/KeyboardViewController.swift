@@ -714,6 +714,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         let host = UIHostingController(rootView: list)
         host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.backgroundColor = .clear
         addChild(host)
         view.addSubview(host.view)
         host.didMove(toParent: self)

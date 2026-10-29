@@ -28,7 +28,6 @@ struct CandidateList: View {
                 }
             }
         }
-        .background(Color(uiColor: Palette.background))
     }
 }
 
