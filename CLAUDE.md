@@ -76,7 +76,9 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 
 - 【保留】設定はメニューにきちんとまとめたい。キーボード上で調整する機能（キーを見ながら調整の帯、打ち比べで最適化、左下の片手／両手キー、ずれ補正などの自動補正）は、「キーボード上での補正を使う」のようなトグルをオンにしたときだけ出したい。メニューの場所（キーボードの設定画面か、アプリ本体か）は未定。アプリ本体で設定するには App Groups が必要で、有料の開発者登録が要る
   - 無料のままでできる案：アプリ本体の設定メニューから、設定をJSONにしてクリップボードへコピーし、キーボードが開いたときに読み込む（フルアクセスは許可済み）。自動の共有ではなく、アプリ→キーボードの一方向
-  - 未確認：SideStore（AltStore系）で入れると、App Groups も登録されて使えるかもしれない。SideStoreに移すときに試す
+  - SideStore（AltStore系）で入れれば、無料のApple IDでも App Groups が使える見込み（SideStore のソースで確認）：アプリの entitlements にある com.apple.security.application-groups を読み、Apple に App Group を登録してアプリと拡張に割り当てる。名前の末尾に「.チームID」が付くので、アプリ側は自分の実行ファイルの entitlements から実際の名前を読み取る（SideStore の Bundle+AltStore.swift の appGroups と同じやり方）
+  - やること：①アプリとキーボードに App Groups の entitlements を入れる ②ビルドの最後に entitlements を埋め込む仮署名（codesign -s - --entitlements）をする（今は署名なしで entitlements が入っていない）③設定の保存先を App Group の共有場所に変え、名前は起動時に読む ④アプリ本体に設定メニューを作る
+  - 進め方：先に SideStore の準備（AltServer・JitterbugPair・StosVPN・ペアリングファイル・ショートカットの自動化で毎日 Refresh apps）をしてから、DuoFlick の対応を入れる。Sideloadly で同じことができるかは不明
 - SideStore：毎日ショートカットの自動化で「Refresh apps」を動かせば、PCなしで7日の署名切れを防げる。自作アプリ3つの枠を1つ使う。キーボード拡張が残るかは要確認
 
 - v0.10 のビルド結果は未確認（大きな変更のため、型推論エラーなどが出る可能性あり）
