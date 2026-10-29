@@ -62,7 +62,7 @@ struct SettingsActions {
     let onResetOffset: () -> Void
 }
 
-/// ⚙で開く設定画面。キーボードの場所いっぱいに一覧で出す。
+/// 地球儀キーの上フリックで開く設定画面。キーボードの場所いっぱいに一覧で出す。
 struct SettingsScreen: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var dictionary: UserDictionaryStore
@@ -92,7 +92,7 @@ struct SettingsScreen: View {
 
     private var title: String {
         switch page {
-        case .main: return "設定（\(model.profile.title)）"
+        case .main: return "設定（\(model.title)）"
         case .themes: return "配色"
         case .presets: return "設定の保存と呼び出し"
         case .dictionary: return "ユーザー辞書（\(dictionary.words.count)語）"
@@ -122,6 +122,19 @@ struct SettingsScreen: View {
 
     private var mainPage: some View {
         Form {
+            Section {
+                Picker("持ち方", selection: Binding(
+                    get: { model.grip },
+                    set: { if $0 != model.grip { model.toggleGrip() } })) {
+                    Text("片手持ち").tag(Grip.one)
+                    Text("両手持ち").tag(Grip.two)
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("持ち方")
+            } footer: {
+                Text("片手持ちと両手持ちで、形や大きさを別々に覚えます。左下のキーでも切り替えられます。")
+            }
             Section("形") {
                 Picker("形", selection: $model.settings.shape) {
                     Text("両手").tag(KeyboardShape.standard)

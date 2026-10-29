@@ -8,6 +8,13 @@ enum KeyboardShape: String, Codable, CaseIterable {
     case fan        // 片手用の扇形
 }
 
+/// 持ち方。片手持ち用と両手持ち用で、別々の設定を覚える
+enum Grip: String, Codable {
+    case one, two
+
+    var title: String { self == .one ? "片手持ち" : "両手持ち" }
+}
+
 /// 片手で使うときの手
 enum Hand: String, Codable {
     case right, left
@@ -75,24 +82,30 @@ struct KeyboardSettings: Codable, Equatable {
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。
     static let ptPerMM: Double = 6.1
-    static func load(profile: ScreenProfile) -> KeyboardSettings {
-        guard let data = UserDefaults.standard.data(forKey: profile.storeKey),
-              let s = try? JSONDecoder().decode(KeyboardSettings.self, from: data) else {
-            // 内側画面の設定がまだなければ、外側画面の設定を元にする
-            if profile == .wide, let base = try? JSONDecoder().decode(
-                KeyboardSettings.self, from: UserDefaults.standard.data(forKey: ScreenProfile.narrow.storeKey) ?? Data()) {
-                var w = base
-                w.shape = .standard
-                return w
-            }
-            return KeyboardSettings()
+    static func load(profile: ScreenProfile, grip: Grip) -> KeyboardSettings {
+        if let s = stored(profile.storeKey(grip)) { return s }
+        // まだなければ、もう一方の持ち方の設定を元に、形だけ変えて作る
+        let other: Grip = grip == .one ? .two : .one
+        var base = stored(profile.storeKey(other))
+            ?? (profile == .wide ? stored(ScreenProfile.narrow.storeKey(.one)) : nil)
+            ?? KeyboardSettings()
+        if grip == .two {
+            if base.shape != .standard { base.oneHandShape = base.shape }
+            base.shape = .standard
+        } else if base.shape == .standard {
+            base.shape = base.oneHandShape == .standard ? .rightGrid : base.oneHandShape
         }
-        return s
+        return base
     }
 
-    func save(profile: ScreenProfile) {
+    private static func stored(_ key: String) -> KeyboardSettings? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(KeyboardSettings.self, from: data)
+    }
+
+    func save(profile: ScreenProfile, grip: Grip) {
         if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: profile.storeKey)
+            UserDefaults.standard.set(data, forKey: profile.storeKey(grip))
         }
     }
 }
@@ -103,7 +116,15 @@ enum ScreenProfile: String {
 
     static func forWidth(_ w: CGFloat) -> ScreenProfile { w > 480 ? .wide : .narrow }
 
-    var storeKey: String { self == .narrow ? "DuoFlick.settings.v1" : "DuoFlick.settings.wide.v1" }
+    /// これまでの設定（外側画面は片手持ち、内側画面は両手持ち）はそのままの場所に残す
+    func storeKey(_ grip: Grip) -> String {
+        switch (self, grip) {
+        case (.narrow, .one): return "DuoFlick.settings.v1"
+        case (.narrow, .two): return "DuoFlick.settings.narrow2.v1"
+        case (.wide, .one): return "DuoFlick.settings.wide1.v1"
+        case (.wide, .two): return "DuoFlick.settings.wide.v1"
+        }
+    }
     var title: String { self == .narrow ? "外側画面" : "内側画面" }
 }
 
@@ -118,19 +139,26 @@ final class SettingsModel: ObservableObject {
     @Published var settings: KeyboardSettings {
         didSet {
             if settings != oldValue {
-                settings.save(profile: profile)
+                settings.save(profile: profile, grip: grip)
                 onChange?(settings)
             }
         }
     }
     @Published private(set) var profile: ScreenProfile = .narrow
+    @Published private(set) var grip: Grip
+    private static let gripKey = "DuoFlick.grip.v1"
+
+    /// 設定画面に出す名前（例：外側画面・片手持ち）
+    var title: String { "\(profile.title)・\(grip.title)" }
     @Published private(set) var presets: [SavedPreset] = []
     var onChange: ((KeyboardSettings) -> Void)?
 
     private static let presetKey = "DuoFlick.presets.v1"
 
     init() {
-        settings = KeyboardSettings.load(profile: .narrow)
+        let g = Grip(rawValue: UserDefaults.standard.string(forKey: Self.gripKey) ?? "") ?? .one
+        grip = g
+        settings = KeyboardSettings.load(profile: .narrow, grip: g)
         if let data = UserDefaults.standard.data(forKey: Self.presetKey),
            let list = try? JSONDecoder().decode([SavedPreset].self, from: data) {
             presets = list
@@ -141,8 +169,21 @@ final class SettingsModel: ObservableObject {
     func use(profile p: ScreenProfile) {
         guard p != profile else { return }
         profile = p
-        settings = KeyboardSettings.load(profile: p)
+        settings = KeyboardSettings.load(profile: p, grip: grip)
         onChange?(settings)
+    }
+
+    /// 片手持ち⇄両手持ちを切り替える
+    func toggleGrip() {
+        grip = grip == .one ? .two : .one
+        UserDefaults.standard.set(grip.rawValue, forKey: Self.gripKey)
+        let s = KeyboardSettings.load(profile: profile, grip: grip)
+        if s == settings {
+            onChange?(settings)
+        } else {
+            settings = s
+        }
+        settings.save(profile: profile, grip: grip)
     }
 
     func savePreset() {

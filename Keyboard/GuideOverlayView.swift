@@ -6,6 +6,8 @@ struct FlickGuide {
     let rotation: CGFloat
     let chars: [String]
     let selected: FlickDirection
+    /// 方向ごとの表示位置（キー何個分か）。省略すると十字に並べる
+    var offsets: [CGPoint]? = nil
 }
 
 /// フリック中の十字ガイドを、変換候補の帯の上にも重ねて描くためのビュー。タッチは受け取らない。
@@ -32,8 +34,12 @@ final class GuideOverlayView: UIView {
 
     private func draw(_ g: FlickGuide, in ctx: CGContext) {
         let w = g.size.width, h = g.size.height
-        let cells: [(FlickDirection, CGFloat, CGFloat)] = [(.tap, 0, 0), (.left, -1, 0), (.up, 0, -1), (.right, 1, 0), (.down, 0, 1)]
-        let font = UIFont.systemFont(ofSize: min(w, h) * 0.46, weight: .semibold)
+        var cells: [(FlickDirection, CGFloat, CGFloat)] = [(.tap, 0, 0), (.left, -1, 0), (.up, 0, -1), (.right, 1, 0), (.down, 0, 1)]
+        if let o = g.offsets {
+            cells = cells.map { ($0.0, o[$0.0.rawValue].x, o[$0.0.rawValue].y) }
+        }
+        let bigFont = UIFont.systemFont(ofSize: min(w, h) * 0.46, weight: .semibold)
+        let smallFont = UIFont.systemFont(ofSize: min(w, h) * 0.26, weight: .semibold)
 
         // 十字全体（幅3キー×高さ3キー）がビューの中に収まるよう、中心をずらす
         let c: CGFloat = abs(cos(g.rotation))
@@ -66,6 +72,7 @@ final class GuideOverlayView: UIView {
             p.lineWidth = 0.5
             p.stroke()
             let color: UIColor = d == g.selected ? Palette.pressedText : Palette.text
+            let font = ch.count > 1 ? smallFont : bigFont
             let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
             let sz = (ch as NSString).size(withAttributes: attrs)
             let tx: CGFloat = r.midX - sz.width / 2

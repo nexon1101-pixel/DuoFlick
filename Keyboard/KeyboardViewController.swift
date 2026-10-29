@@ -65,6 +65,7 @@ final class KeyboardViewController: UIInputViewController {
 
         keyboardView.topInset = CandidateBar.height
         keyboardView.guideView = guideView
+        keyboardView.grip = model.grip
         keyboardView.settings = model.settings
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
         keyboardView.onPress = { [weak self] in
@@ -83,6 +84,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         model.onChange = { [weak self] s in
             guard let self else { return }
+            self.keyboardView.grip = self.model.grip
             self.keyboardView.settings = s
             self.updateHeight(force: true)
         }
@@ -134,9 +136,11 @@ final class KeyboardViewController: UIInputViewController {
         lastKeyboardType = type
         switch type {
         case .emailAddress, .URL, .asciiCapable, .twitter, .webSearch:
-            setMode(.alpha)
+            fullWidth = false
+            setMode(.qwerty)
         case .numberPad, .phonePad, .decimalPad, .numbersAndPunctuation, .namePhonePad, .asciiCapableNumberPad:
-            setMode(.number)
+            fullWidth = false
+            setMode(.symbol)
         default:
             setMode(.kana)
         }
@@ -146,6 +150,9 @@ final class KeyboardViewController: UIInputViewController {
         if m != .kana { commitAll() }
         mode = m
         keyboardView.mode = m
+        if m != .qwerty { shiftState = .off }
+        updateShiftDisplay()
+        updateKeyLabels()
         updateHeight(force: true)
     }
 
@@ -169,7 +176,7 @@ final class KeyboardViewController: UIInputViewController {
             switch def.action {
             case .kana(let chars), .direct(let chars):
                 optimizer.input(pick(chars, dir))
-            case .settings:
+            case .settings, .nextKeyboard:
                 stopOptimizing()
             default:
                 break
@@ -177,7 +184,8 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         let proxy = textDocumentProxy
-        if case .undo = def.action {
+        // ⌫の右フリック：確定の取り消し（↺）
+        if case .delete = def.action, dir == .right {
             // 続けてタップの途中なら、ひとつ前の文字に戻す（iOS標準の↺と同じ）
             if let t = toggle, let chars = t.def.flickChars, applyToggle(t.def, chars, step: -1) {
                 return
@@ -215,10 +223,11 @@ final class KeyboardViewController: UIInputViewController {
         case .direct(let chars):
             commitAll()
             composer.clearPredictions()
-            let s = autoCapitalized(pick(chars, dir))
+            let s = styled(pick(chars, dir))
             if toggle != nil { toggle?.output = s }
             proxy.insertText(s)
             refreshBar()
+            updateShiftDisplay()
         case .modifier:
             if !composer.isEmpty {
                 if let last = composer.reading.last, let next = KeyCatalog.modified(String(last)),
@@ -230,13 +239,28 @@ final class KeyboardViewController: UIInputViewController {
                 proxy.deleteBackward()
                 proxy.insertText(next)
             }
-        case .caseToggle:
-            if let last = proxy.documentContextBeforeInput?.last, last.isLetter, last.isASCII {
-                let s = String(last)
-                let swapped = s == s.lowercased() ? s.uppercased() : s.lowercased()
-                proxy.deleteBackward()
-                proxy.insertText(swapped)
+        case .shift:
+            // 1回で次の1文字だけ大文字、すぐにもう1回で固定
+            let now = Date()
+            if shiftState == .on, now.timeIntervalSince(lastShiftTap) < 0.35 {
+                shiftState = .locked
+            } else {
+                shiftState = shiftState == .off ? .on : .off
             }
+            lastShiftTap = now
+            updateShiftDisplay()
+        case .layer(let m):
+            setMode(m)
+        case .widthToggle:
+            fullWidth.toggle()
+            updateKeyLabels()
+        case .numberPad:
+            break
+        case .gripSwitch:
+            commitAll()
+            hideTop()
+            hidePanel()
+            model.toggleGrip()
         case .delete:
             if dir == .left {
                 deleteWord()
@@ -251,7 +275,7 @@ final class KeyboardViewController: UIInputViewController {
         case .space:
             if composer.isEmpty {
                 composer.clearPredictions()
-                proxy.insertText(mode == .kana ? "　" : " ")
+                proxy.insertText(mode == .kana || fullWidth ? "　" : " ")
                 refreshBar()
             } else {
                 composer.selectNext()
@@ -268,20 +292,56 @@ final class KeyboardViewController: UIInputViewController {
         case .modeSwitch:
             setMode(mode.next)
         case .settings:
+            toggleSettings()
+        case .nextKeyboard:
+            // 地球儀：タップでキーボードを切り替え、上で設定、左で定型文、右でクリップボード
             switch dir {
-            case .up: showPhrases()
+            case .up: toggleSettings()
+            case .left: showPhrases()
             case .right: showClipboard()
             default:
-                if topHost != nil { hideTop() }
-                else if panelHost != nil { hidePanel() }
-                else { showSettings() }
+                commitAll()
+                advanceToNextInputMode()
             }
-        case .nextKeyboard:
-            commitAll()
-            advanceToNextInputMode()
-        case .undo:
-            break
         }
+    }
+
+    private func toggleSettings() {
+        if topHost != nil { hideTop() }
+        else if panelHost != nil { hidePanel() }
+        else { showSettings() }
+    }
+
+    // MARK: - 英字の大文字・全角
+
+    private enum ShiftState { case off, on, locked }
+    private var shiftState: ShiftState = .off
+    private var lastShiftTap = Date.distantPast
+    /// 英字・記号を全角で入れる
+    private var fullWidth = false
+
+    private func updateShiftDisplay() {
+        keyboardView.uppercase = shiftState != .off || (mode == .qwerty && shouldAutoCapitalize())
+        keyboardView.capsLock = shiftState == .locked
+    }
+
+    /// 英字・記号の面で入れる文字を、大文字・全角に直す
+    private func styled(_ s: String) -> String {
+        var out = s
+        if mode == .qwerty, s.count == 1, let c = s.first, c.isLetter, c.isASCII {
+            if shiftState != .off || shouldAutoCapitalize() { out = s.uppercased() }
+            if shiftState == .on { shiftState = .off }
+        }
+        if fullWidth && mode != .kana { out = Self.toFullWidth(out) }
+        return out
+    }
+
+    static func toFullWidth(_ s: String) -> String {
+        String(String.UnicodeScalarView(s.unicodeScalars.map { u in
+            if u.value >= 0x21 && u.value <= 0x7E, let f = Unicode.Scalar(u.value + 0xFEE0) { return f }
+            if u.value == 0x20 { return Unicode.Scalar(0x3000)! }
+            return u
+        }))
     }
 
     // MARK: - 続けてタップで切り替え（トグル入力）
@@ -339,29 +399,23 @@ final class KeyboardViewController: UIInputViewController {
         return true
     }
 
-    /// 英字モードで、入力欄の設定に合わせて文頭などを大文字にする
-    private func autoCapitalized(_ s: String) -> String {
-        guard mode == .alpha, s.count == 1, let c = s.first, c.isLetter, c.isLowercase else { return s }
+    /// 英字の面で、入力欄の設定に合わせて文頭などを大文字にするか
+    private func shouldAutoCapitalize() -> Bool {
+        guard mode == .qwerty else { return false }
         let before = textDocumentProxy.documentContextBeforeInput ?? ""
-        let upper: Bool
         switch textDocumentProxy.autocapitalizationType ?? .none {
         case .allCharacters:
-            upper = true
+            return true
         case .words:
-            upper = before.isEmpty || before.last!.isWhitespace
+            return before.isEmpty || before.last!.isWhitespace
         case .sentences:
-            if before.isEmpty || before.last == "\n" {
-                upper = true
-            } else if before.last!.isWhitespace {
-                let t = before.trimmingCharacters(in: .whitespaces)
-                upper = t.isEmpty || [".", "!", "?", "\n"].contains(t.last!)
-            } else {
-                upper = false
-            }
+            if before.isEmpty || before.last == "\n" { return true }
+            guard before.last!.isWhitespace else { return false }
+            let t = before.trimmingCharacters(in: .whitespaces)
+            return t.isEmpty || [".", "!", "?", "\n"].contains(t.last!)
         default:
-            upper = false
+            return false
         }
-        return upper ? s.uppercased() : s
     }
 
     private func pick(_ chars: [String], _ dir: FlickDirection) -> String {
@@ -574,9 +628,13 @@ final class KeyboardViewController: UIInputViewController {
                 disabled.insert("newline")
             }
         }
+        labels["width"] = fullWidth ? "全角" : "半角"
+        if fullWidth { accent.insert("width") }
+        if mode != .kana { labels["space"] = composer.isEmpty ? (fullWidth ? "全角空白" : "space") : "次候補" }
         keyboardView.labelOverrides = labels
         keyboardView.accentIDs = accent
         keyboardView.disabledIDs = disabled
+        updateShiftDisplay()
     }
 
     // MARK: - 候補の一覧
@@ -785,10 +843,8 @@ final class KeyboardViewController: UIInputViewController {
             if !reg.reading.isEmpty { reg.reading.removeLast() }
         case .newline:
             finishRegister(save: !reg.word.isEmpty && !reg.reading.isEmpty)
-        case .settings, .undo:
+        case .settings, .nextKeyboard:
             finishRegister(save: false)
-        case .modeSwitch:
-            setMode(mode.next)
         default:
             break
         }

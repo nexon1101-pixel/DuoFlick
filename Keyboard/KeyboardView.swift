@@ -78,6 +78,17 @@ final class KeyboardView: UIView {
     var mode: InputMode = .kana {
         didSet { if mode != oldValue { relayout() } }
     }
+    var grip: Grip = .one {
+        didSet { if grip != oldValue { relayout() } }
+    }
+    /// 英字を大文字で表示する（⇧）
+    var uppercase = false {
+        didSet { if uppercase != oldValue { setNeedsDisplay() } }
+    }
+    /// ⇧を固定中
+    var capsLock = false {
+        didSet { if capsLock != oldValue { setNeedsDisplay() } }
+    }
     /// 上に空けておく高さ（変換候補の帯の分）
     var topInset: CGFloat = 0 {
         didSet { if topInset != oldValue { relayout() } }
@@ -101,6 +112,9 @@ final class KeyboardView: UIView {
         var cursorMode = false
         var cursorAnchorX: CGFloat = 0
         var cursorAnchorY: CGFloat = 0
+        /// 数字キー：0なら0〜4、1なら5〜9の枠を開いた
+        var numberStage: Int?
+        var numberAnchor: CGPoint = .zero
         init(key: LaidKey, start: CGPoint) {
             self.key = key
             self.start = start
@@ -121,7 +135,7 @@ final class KeyboardView: UIView {
     }
 
     func requiredHeight(for width: CGFloat) -> CGFloat {
-        KeyboardLayout.make(settings: settings, mode: mode, width: width, topInset: topInset).height
+        KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: width, topInset: topInset).height
     }
 
     override func layoutSubviews() {
@@ -137,7 +151,7 @@ final class KeyboardView: UIView {
     private func relayout() {
         layoutWidth = bounds.width
         guard layoutWidth > 0 else { return }
-        let result = KeyboardLayout.make(settings: settings, mode: mode, width: layoutWidth, topInset: topInset)
+        let result = KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: layoutWidth, topInset: topInset)
         keys = result.keys
         keysBottom = result.keysBottom
         setNeedsDisplay()
@@ -167,10 +181,12 @@ final class KeyboardView: UIView {
             if k.isSector { fill.setStroke(); k.path.stroke() }
 
             let m = min(k.size.width, k.size.height)
-            let single = k.def.isCharacter && k.def.label.count == 1
+            let single = (k.def.isCharacter && k.def.label.count == 1) || k.def.id == "number"
             let ratio: CGFloat = single ? 0.44 : 0.28
             let font = UIFont.systemFont(ofSize: m * ratio * CGFloat(settings.labelScale), weight: .regular)
             var label = labelOverrides[k.def.id] ?? k.def.label
+            if uppercase, mode == .qwerty, k.def.id.hasPrefix("q_") { label = label.uppercased() }
+            if case .shift = k.def.action { label = capsLock ? "⇪" : (uppercase ? "⬆︎" : "⇧") }
             if cursorMode, case .space = k.def.action { label = "◀ ▲▼ ▶" }
             var color = isPressed ? Palette.pressedText : (accent ? UIColor.white : Palette.text)
             if disabledIDs.contains(k.def.id) { color = color.withAlphaComponent(0.35) }
@@ -188,12 +204,57 @@ final class KeyboardView: UIView {
     private func updateGuides() {
         var list: [FlickGuide] = []
         for a in active.values {
-            if let chars = a.key.def.flickChars {
+            if a.key.def.isNumberPad {
+                list.append(numberGuide(a))
+            } else if let chars = guideChars(a.key.def) {
                 list.append(FlickGuide(center: a.key.center, size: a.key.size, rotation: textRotation(a.key),
                                        chars: chars, selected: direction(a.key, from: a.start, to: a.current)))
             }
         }
         guideView?.guides = list
+    }
+
+    /// フリックのガイドに出す文字。1方向しかないキー（英字など）は出さない
+    private func guideChars(_ def: KeyDef) -> [String]? {
+        if case .nextKeyboard = def.action { return ["", "定型文", "設定", "履歴", ""] }
+        guard let chars = def.flickChars, chars.filter({ !$0.isEmpty }).count > 1 else { return nil }
+        return chars
+    }
+
+    /// 数字キーは右（左手のときは左）に寄せるほど親指が届きやすい
+    private var numberMirrored: Bool { settings.shape != .standard && settings.hand == .left }
+
+    private func numberGuide(_ a: Active) -> FlickGuide {
+        let side: CGFloat = numberMirrored ? -1 : 1
+        if let stage = a.numberStage {
+            let base = stage * 5
+            let chars = (0..<5).map { String(base + $0) }
+            return FlickGuide(center: a.numberAnchor, size: a.key.size, rotation: 0, chars: chars,
+                              selected: numberDirection(from: a.numberAnchor, to: a.current))
+        }
+        // まだ枠を選んでいない：右上に0〜4、右下に5〜9があることを示す
+        return FlickGuide(center: a.key.center, size: a.key.size, rotation: 0,
+                          chars: ["", "", "0〜4", "", "5〜9"], selected: .tap,
+                          offsets: [.zero, .zero, CGPoint(x: side, y: -1), .zero, CGPoint(x: side, y: 1)])
+    }
+
+    private func numberDirection(from s: CGPoint, to e: CGPoint) -> FlickDirection {
+        let dx: CGFloat = e.x - s.x
+        let dy: CGFloat = e.y - s.y
+        if hypot(dx, dy) / CGFloat(KeyboardSettings.ptPerMM) < CGFloat(settings.flickMinMM) { return .tap }
+        if abs(dx) > abs(dy) { return dx < 0 ? .left : .right }
+        return dy < 0 ? .up : .down
+    }
+
+    /// 数字キーを指で動かしているとき：一定の距離を動いたら、上なら0〜4、下なら5〜9の枠を開く
+    private func trackNumber(_ a: Active, _ p: CGPoint) {
+        guard a.numberStage == nil else { return }
+        let dx: CGFloat = p.x - a.start.x
+        let dy: CGFloat = p.y - a.start.y
+        let moved: CGFloat = hypot(dx, dy) / CGFloat(KeyboardSettings.ptPerMM)
+        guard moved >= CGFloat(settings.flickMinMM) else { return }
+        a.numberStage = dy < 0 ? 0 : 1
+        a.numberAnchor = p
     }
 
     private func drawText(_ s: String, center: CGPoint, rotation: CGFloat, font: UIFont, color: UIColor, in ctx: CGContext) {
@@ -341,6 +402,7 @@ final class KeyboardView: UIView {
             guard let a = active[t] else { continue }
             let p = t.location(in: self)
             a.current = p
+            if a.key.def.isNumberPad { trackNumber(a, p) }
             if case .space = a.key.def.action, !a.cursorMode {
                 // 長押しを待たずに横へ大きく動かしたときも、カーソル移動にする
                 if abs(p.x - a.start.x) > stepPt * 1.5 {
@@ -378,6 +440,15 @@ final class KeyboardView: UIView {
         for t in touches {
             guard let a = active.removeValue(forKey: t) else { continue }
             a.timer?.invalidate()
+            if a.key.def.isNumberPad {
+                // タップだけでは何も入れない
+                if let stage = a.numberStage {
+                    let d = numberDirection(from: a.numberAnchor, to: t.location(in: self))
+                    let digit = String(stage * 5 + d.rawValue)
+                    onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
+                }
+                continue
+            }
             if !a.repeated && !a.cursorMode {
                 let dir = direction(a.key, from: a.start, to: t.location(in: self))
                 if dir == .tap, a.key.def.isCharacter { learnOffset(a.start, a.key) }

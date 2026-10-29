@@ -35,29 +35,72 @@ enum KeyboardLayout {
         var width: CGFloat { maxX - minX }
     }
 
-    static func make(settings s: KeyboardSettings, mode: InputMode = .kana, width W: CGFloat, topInset: CGFloat = 0) -> LayoutResult {
+    static func make(settings s: KeyboardSettings, mode: InputMode = .kana, grip: Grip = .one,
+                     width W: CGFloat, topInset: CGFloat = 0) -> LayoutResult {
+        if mode != .kana {
+            // 英字・記号は、片手でも普通の横並びにする
+            return place(qwerty(s, mode, W), s, W, 1, topInset, centered: true)
+        }
         let avail = W - 2 * mm(s.marginMM)
         var fit: CGFloat = 1
-        var built = build(s, mode, W, fit)
+        var built = build(s, mode, grip, W, fit)
         if s.shape != .standard {
             // 画面幅に収まらないときは、キーの幅を縮めて収める
             for _ in 0..<4 where built.width > avail + 0.5 {
                 fit *= avail / built.width * 0.995
-                built = build(s, mode, W, fit)
+                built = build(s, mode, grip, W, fit)
             }
         }
-        return place(built, s, W, fit, topInset)
+        return place(built, s, W, fit, topInset, centered: s.shape == .standard)
+    }
+
+    /// 英字・記号の面。行ごとに幅の比率でキーを並べる（2段目の英字だけは1キー分の幅で中央に寄せる）
+    private static func qwerty(_ s: KeyboardSettings, _ mode: InputMode, _ W: CGFloat) -> Built {
+        let rows = KeyCatalog.qwertyRows(mode)
+        let g: CGFloat = mm(s.gapMM)
+        let avail: CGFloat = W - 2 * mm(s.marginMM)
+        let unit: CGFloat = (avail - 9 * g) / 10
+        let h: CGFloat = mm(s.keyHeightMM)
+        var raws: [Raw] = []
+        var y: CGFloat = 0
+        for row in rows {
+            let n = CGFloat(row.count)
+            let total: CGFloat = row.reduce(0) { $0 + $1.weight }
+            var widths: [CGFloat]
+            if row.allSatisfy({ $0.weight == 1 }) && row.count < 10 {
+                widths = Array(repeating: unit, count: row.count)
+            } else {
+                let per: CGFloat = (avail - (n - 1) * g) / total
+                widths = row.map { $0.weight * per }
+            }
+            let rowW: CGFloat = widths.reduce(0, +) + (n - 1) * g
+            var x: CGFloat = (avail - rowW) / 2
+            for (i, item) in row.enumerated() {
+                let rect = CGRect(x: x, y: y, width: widths[i], height: h)
+                raws.append(Raw(
+                    def: item.def,
+                    points: [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                             CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)],
+                    isSector: false,
+                    center: CGPoint(x: rect.midX, y: rect.midY),
+                    rotation: 0,
+                    size: rect.size))
+                x += widths[i] + g
+            }
+            y += h + g
+        }
+        return Built(keys: raws, minX: 0, maxX: avail, minY: 0, maxY: y - g)
     }
 
     private static func isLeftHand(_ s: KeyboardSettings) -> Bool {
         s.shape != .standard && s.hand == .left
     }
 
-    private static func build(_ s: KeyboardSettings, _ mode: InputMode, _ W: CGFloat, _ fit: CGFloat) -> Built {
+    private static func build(_ s: KeyboardSettings, _ mode: InputMode, _ grip: Grip, _ W: CGFloat, _ fit: CGFloat) -> Built {
         // 左手のときは、列を逆順に作ってから左右反転する。こうするとキーの並び（あかさ…）は
         // そのままで、扇の開く向きや大きくなる側だけが左右逆になる。
         let left = isLeftHand(s)
-        let baseCols = KeyCatalog.columns(mode)
+        let baseCols = KeyCatalog.columns(mode, grip: grip)
         let cols = left ? Array(baseCols.reversed()) : baseCols
         let n = cols.count
         let g = mm(s.gapMM), m = mm(s.marginMM)
@@ -199,11 +242,12 @@ enum KeyboardLayout {
         return pts
     }
 
-    private static func place(_ b: Built, _ s: KeyboardSettings, _ W: CGFloat, _ fit: CGFloat, _ topInset: CGFloat) -> LayoutResult {
+    private static func place(_ b: Built, _ s: KeyboardSettings, _ W: CGFloat, _ fit: CGFloat, _ topInset: CGFloat,
+                              centered: Bool) -> LayoutResult {
         let m: CGFloat = mm(s.marginMM)
         let topPad: CGFloat = mm(1.5) + topInset
         let dx: CGFloat
-        if s.shape == .standard {
+        if centered {
             dx = (W - b.width) / 2 - b.minX
         } else if isLeftHand(s) {
             dx = m - b.minX

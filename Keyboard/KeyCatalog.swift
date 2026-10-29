@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 enum FlickDirection: Int {
     case tap = 0, left, up, right, down
@@ -6,35 +7,30 @@ enum FlickDirection: Int {
 
 /// 文字の種類
 enum InputMode: String, Codable {
-    case kana, alpha, number
+    case kana      // かなフリック
+    case qwerty    // 英字（パソコンと同じ並び）
+    case symbol    // 数字と記号
+    case symbol2   // そのほかの記号
 
-    var next: InputMode {
-        switch self {
-        case .kana: return .alpha
-        case .alpha: return .number
-        case .number: return .kana
-        }
-    }
+    /// 文字種キー（かな⇄英字）で切り替える先
+    var next: InputMode { self == .kana ? .qwerty : .kana }
 
-    /// 文字種キーに表示する、次の文字種の名前
-    var switchLabel: String {
-        switch next {
-        case .kana: return "あいう"
-        case .alpha: return "ABC"
-        case .number: return "☆123"
-        }
-    }
+    /// 文字種キーに表示する、切り替え先の名前
+    var switchLabel: String { self == .kana ? "ABC" : "あいう" }
 }
 
 enum KeyAction {
     case kana([String])   // かな：[タップ, 左, 上, 右, 下]。変換の対象になる
     case direct([String]) // 英字・数字・記号：そのまま入力する
     case modifier         // 小゛゜
-    case caseToggle       // a/A：直前の英字の大文字・小文字を入れ替える
+    case shift            // 英字の大文字（2回続けて押すと固定）
+    case layer(InputMode) // 英字・記号の面を切り替える
+    case numberPad        // 数字キー：右上で0〜4、右下で5〜9
+    case gripSwitch       // 片手持ち⇄両手持ちの設定を切り替える
+    case widthToggle      // 英字・記号の全角⇄半角
     case delete
     case space
     case newline
-    case undo             // ↺：確定の取り消し
     case modeSwitch
     case settings
     case nextKeyboard
@@ -68,9 +64,16 @@ struct KeyDef {
         return false
     }
 
-    /// ⚙キー（上フリックで定型文、右フリックでクリップボード）
+    /// フリックで別の働きをするキー（地球儀：上で設定、左で定型文、右でクリップボード）
     var isSettings: Bool {
-        if case .settings = action { return true }
+        switch action {
+        case .settings, .nextKeyboard: return true
+        default: return false
+        }
+    }
+
+    var isNumberPad: Bool {
+        if case .numberPad = action { return true }
         return false
     }
 }
@@ -92,19 +95,19 @@ enum KeyCatalog {
         KeyDef(id: id, label: label, action: .direct(chars))
     }
 
-    static func leftColumn(_ mode: InputMode) -> [KeyDef?] {
+    static func leftColumn(_ mode: InputMode, grip: Grip) -> [KeyDef?] {
         [
-            KeyDef(id: "undo", label: "↺", action: .undo),
-            KeyDef(id: "settings", label: "⚙", action: .settings),
-            KeyDef(id: "mode", label: mode.switchLabel, action: .modeSwitch),
+            KeyDef(id: "number", label: "123", action: .numberPad),
             KeyDef(id: "globe", label: "", action: .nextKeyboard),
+            KeyDef(id: "mode", label: mode.switchLabel, action: .modeSwitch),
+            KeyDef(id: "grip", label: grip == .one ? "片手" : "両手", action: .gripSwitch),
         ]
     }
 
     static func functionColumn(_ mode: InputMode) -> [KeyDef?] {
         [
             KeyDef(id: "delete", label: "⌫", action: .delete),
-            KeyDef(id: "space", label: mode == .kana ? "空白" : "space", action: .space),
+            KeyDef(id: "space", label: "空白", action: .space),
             KeyDef(id: "newline", label: "改行", action: .newline, rowSpan: 2),
             nil,
         ]
@@ -121,46 +124,57 @@ enum KeyCatalog {
          kana("punct", ["、", "。", "？", "！", ""], label: "、。?!")],
     ]
 
-    // 英字（iPhoneの英字フリックと同じ並び）
-    private static let alphaColumns: [[KeyDef?]] = [
-        [direct("at", ["@", "#", "/", "&", "_"], label: "@#/&_"),
-         direct("ghi", ["g", "h", "i", "", ""], label: "GHI"),
-         direct("pqrs", ["p", "q", "r", "s", ""], label: "PQRS"),
-         KeyDef(id: "case", label: "a/A", action: .caseToggle)],
-        [direct("abc", ["a", "b", "c", "", ""], label: "ABC"),
-         direct("jkl", ["j", "k", "l", "", ""], label: "JKL"),
-         direct("tuv", ["t", "u", "v", "", ""], label: "TUV"),
-         direct("quote", ["'", "\"", "(", ")", ""], label: "'\"()")],
-        [direct("def", ["d", "e", "f", "", ""], label: "DEF"),
-         direct("mno", ["m", "n", "o", "", ""], label: "MNO"),
-         direct("wxyz", ["w", "x", "y", "z", ""], label: "WXYZ"),
-         direct("dot", [".", ",", "?", "!", ""], label: ".,?!")],
-    ]
+    static func columns(_ mode: InputMode, grip: Grip) -> [[KeyDef?]] {
+        [leftColumn(mode, grip: grip)] + kanaColumns + [functionColumn(mode)]
+    }
 
-    // 数字と記号
-    private static let numberColumns: [[KeyDef?]] = [
-        [direct("n1", ["1", "☆", "♪", "→", ""], label: "1"),
-         direct("n4", ["4", "○", "*", "・", ""], label: "4"),
-         direct("n7", ["7", "「", "」", ":", ""], label: "7"),
-         direct("paren", ["(", ")", "[", "]", ""], label: "()[]")],
-        [direct("n2", ["2", "¥", "$", "€", ""], label: "2"),
-         direct("n5", ["5", "+", "×", "÷", ""], label: "5"),
-         direct("n8", ["8", "〒", "々", "〆", ""], label: "8"),
-         direct("n0", ["0", "〜", "…", "", ""], label: "0")],
-        [direct("n3", ["3", "%", "°", "#", ""], label: "3"),
-         direct("n6", ["6", "<", "=", ">", ""], label: "6"),
-         direct("n9", ["9", "^", "|", "\\", ""], label: "9"),
-         direct("ndot", [".", ",", "-", "/", ""], label: ".,-/")],
-    ]
+    // MARK: - 英字・記号（iPhone標準の英字キーボードと同じ並び）
 
-    static func columns(_ mode: InputMode) -> [[KeyDef?]] {
-        let middle: [[KeyDef?]]
+    /// 1行分のキー。weight は幅の比率
+    typealias Row = [(def: KeyDef, weight: CGFloat)]
+
+    private static func letters(_ s: String) -> Row {
+        s.map { c in (def: KeyDef(id: "q_" + String(c), label: String(c), action: .direct([String(c), "", "", "", ""])), weight: CGFloat(1)) }
+    }
+
+    private static func item(_ def: KeyDef, _ weight: CGFloat) -> (def: KeyDef, weight: CGFloat) {
+        (def: def, weight: weight)
+    }
+
+    static func qwertyRows(_ mode: InputMode) -> [Row] {
+        let delete = item(KeyDef(id: "delete", label: "⌫", action: .delete), 1.5)
+        let bottom: Row = [
+            (def: KeyDef(id: "layer", label: mode == .qwerty ? "123" : "ABC",
+                         action: .layer(mode == .qwerty ? .symbol : .qwerty)), weight: 1.2),
+            (def: KeyDef(id: "globe", label: "", action: .nextKeyboard), weight: 1.2),
+            (def: KeyDef(id: "mode", label: "あいう", action: .modeSwitch), weight: 1.2),
+            (def: KeyDef(id: "width", label: "半角", action: .widthToggle), weight: 1.2),
+            (def: KeyDef(id: "space", label: "space", action: .space), weight: 3.2),
+            (def: KeyDef(id: "newline", label: "改行", action: .newline), weight: 2.0),
+        ]
         switch mode {
-        case .kana: middle = kanaColumns
-        case .alpha: middle = alphaColumns
-        case .number: middle = numberColumns
+        case .symbol:
+            return [
+                letters("1234567890"),
+                letters("-/:;()¥&@\""),
+                [item(KeyDef(id: "layer2", label: "#+=", action: .layer(.symbol2)), 1.5)] + letters(".,?!'") + [delete],
+                bottom,
+            ]
+        case .symbol2:
+            return [
+                letters("[]{}#%^*+="),
+                letters("_\\|~<>$€£•"),
+                [item(KeyDef(id: "layer2", label: "123", action: .layer(.symbol)), 1.5)] + letters(".,?!'") + [delete],
+                bottom,
+            ]
+        default:
+            return [
+                letters("qwertyuiop"),
+                letters("asdfghjkl"),
+                [item(KeyDef(id: "shift", label: "⇧", action: .shift), 1.5)] + letters("zxcvbnm") + [delete],
+                bottom,
+            ]
         }
-        return [leftColumn(mode)] + middle + [functionColumn(mode)]
     }
 
     private static let cycles: [[String]] = [

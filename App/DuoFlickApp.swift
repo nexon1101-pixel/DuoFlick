@@ -18,7 +18,7 @@ struct ContentView: View {
                 Section("はじめに") {
                     Text("1. 設定アプリで「一般」→「キーボード」→「キーボード」→「新しいキーボードを追加」を開き、DuoFlick を追加します。")
                     Text("2. 下の入力欄をタップし、地球儀ボタンを長押しして DuoFlick を選びます。")
-                    Text("3. キーボード左側の ⚙ ボタンで、形・大きさ・位置を調整できます。変更はすぐに反映されます。")
+                    Text("3. 地球儀キーを上にフリックすると設定が開きます。形・大きさ・位置を調整でき、変更はすぐに反映されます。")
                     Button("設定アプリを開く") {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
