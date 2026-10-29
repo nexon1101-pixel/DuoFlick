@@ -76,15 +76,58 @@ final class Composer {
 
     /// 入力欄に下線付きで表示する文字
     var markedText: String {
-        if let i = selectedIndex, i < candidates.count {
-            return candidates[i].text + readingAfterSegment
+        if let i = selectedIndex, i < displayCount {
+            if let ci = candidateIndex(forDisplay: i) {
+                return candidates[ci].text + readingAfterSegment
+            }
+            return extraText ?? composing.convertTarget
         }
         return composing.convertTarget
     }
 
-    var candidateTexts: [String] { candidates.map(\.text) }
+    var candidateTexts: [String] { withExtra(candidates.map(\.text)) }
     /// 一覧に出す候補（多すぎると重いので200個まで）
-    var listTexts: [String] { candidates.prefix(200).map(\.text) }
+    var listTexts: [String] { withExtra(candidates.prefix(200).map(\.text)) }
+
+    // MARK: - 英字の候補（ローマ字かな入力で、打った英字のまま入れたいとき）
+
+    /// 打った英字そのまま。ローマ字だけで打ち、読みを区切っていないときだけ出す
+    private var rawRoman = ""
+    private var rawValid = true
+    private var extraText: String?
+    private static let extraPosition = 2
+
+    private func withExtra(_ texts: [String]) -> [String] {
+        guard let e = extraText else { return texts }
+        var t = texts
+        t.insert(e, at: min(Self.extraPosition, t.count))
+        return t
+    }
+
+    private var displayCount: Int { candidates.count + (extraText == nil ? 0 : 1) }
+
+    /// 帯の番号から変換候補の番号を求める（英字の候補なら nil）
+    private func candidateIndex(forDisplay i: Int) -> Int? {
+        guard extraText != nil else { return i }
+        let e = min(Self.extraPosition, candidates.count)
+        if i == e { return nil }
+        return i > e ? i - 1 : i
+    }
+
+    /// 消したあとの読みに合う、打った英字の長さに合わせ直す
+    private func syncRaw() {
+        guard rawValid else { return }
+        let target = composing.convertTarget
+        var k = rawRoman.count
+        while k >= 0 {
+            let p = String(rawRoman.prefix(k))
+            var t = ComposingText()
+            t.insertAtCursorPosition(p, inputStyle: .roman2kana)
+            if t.convertTarget == target { rawRoman = p; return }
+            k -= 1
+        }
+        rawValid = false
+    }
     var predictionTexts: [String] { predictions.map(\.text) }
 
     func clearPredictions() {
@@ -100,6 +143,11 @@ final class Composer {
         // 文節を区切っていた場合も、入力は末尾に足す
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.insertAtCursorPosition(s, inputStyle: roman ? .roman2kana : .direct)
+        if roman || (!s.isEmpty && s.allSatisfy { $0.isASCII && $0.isLetter }) {
+            rawRoman += s
+        } else {
+            rawValid = false
+        }
         markDirty()
     }
 
@@ -110,6 +158,7 @@ final class Composer {
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.deleteBackwardFromCursorPosition(count: 1)
         composing.insertAtCursorPosition(s, inputStyle: .direct)
+        rawValid = false
         markDirty()
         return true
     }
@@ -122,6 +171,7 @@ final class Composer {
         }
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.deleteBackwardFromCursorPosition(count: 1)
+        syncRaw()
         markDirty()
     }
 
@@ -142,9 +192,9 @@ final class Composer {
     /// 空白キー：次の候補を選ぶ
     func selectNext() {
         refreshIfNeeded()
-        guard !candidates.isEmpty else { return }
+        guard displayCount > 0 else { return }
         if let i = selectedIndex {
-            selectedIndex = (i + 1) % candidates.count
+            selectedIndex = (i + 1) % displayCount
         } else {
             selectedIndex = 0
         }
@@ -152,8 +202,14 @@ final class Composer {
 
     /// 候補を確定する。確定した文字を返す。
     func commit(candidateAt index: Int) -> String? {
-        guard index < candidates.count else { return nil }
-        let c = candidates[index]
+        guard index < displayCount else { return nil }
+        guard let ci = candidateIndex(forDisplay: index) else {
+            // 打った英字のまま確定する
+            let text = extraText ?? composing.convertTarget
+            reset()
+            return text
+        }
+        let c = candidates[ci]
         composing.prefixComplete(composingCount: c.composingCount)
         selectedIndex = nil
         converter.updateLearningData(c)
@@ -162,6 +218,7 @@ final class Composer {
             candidates = []
             startPredictions(after: c)
         } else {
+            rawValid = false
             converter.setCompletedData(c)
             // 残りの読みは区切りなしで変換し直す
             _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
@@ -222,6 +279,9 @@ final class Composer {
         if converterReady { converter.stopComposition() }
         candidates = []
         selectedIndex = nil
+        rawRoman = ""
+        rawValid = true
+        extraText = nil
     }
 
     /// 辞書が読めているかを確かめる（調整バーの「変換の診断」で表示）
@@ -278,10 +338,11 @@ final class Composer {
 
     /// 古い候補を押したとき：変換し直して、同じ文字の候補があればその番号を返す
     func freshIndex(forStale index: Int) -> Int? {
-        guard index < candidates.count else { return nil }
-        let text = candidates[index].text
+        let before = candidateTexts
+        guard index < before.count else { return nil }
+        let text = before[index]
         refreshIfNeeded()
-        return candidates.firstIndex { $0.text == text }
+        return candidateTexts.firstIndex { $0 == text }
     }
 
     func refreshIfNeeded() {
@@ -293,10 +354,17 @@ final class Composer {
         needsRefresh = false
         guard !composing.isEmpty else {
             candidates = []
+            extraText = nil
             if converterReady { converter.stopComposition() }
             return
         }
         let target = isSegmented ? composing.prefixToCursorPosition() : composing
         candidates = converter.requestCandidates(target, options: options).mainResults
+        if rawValid, !isSegmented, !rawRoman.isEmpty, rawRoman.allSatisfy({ $0.isASCII }),
+           rawRoman != composing.convertTarget, !candidates.contains(where: { $0.text == rawRoman }) {
+            extraText = rawRoman
+        } else {
+            extraText = nil
+        }
     }
 }

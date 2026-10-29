@@ -183,6 +183,8 @@ final class KeyboardViewController: UIInputViewController {
             }
             return
         }
+        // 候補を選んでいる間（変換待ち）は、数字キーと、⌫・次候補・確定のキー以外は押せない
+        if composer.selectedIndex != nil, !isAllowedWhileSelecting(def) { return }
         let proxy = textDocumentProxy
         // ⌫の右フリック：確定の取り消し（↺）
         if case .delete = def.action, dir == .right {
@@ -391,6 +393,15 @@ final class KeyboardViewController: UIInputViewController {
         t.output = next
         toggle = t
         return true
+    }
+
+    /// 候補を選んでいる間も押せるキー：数字キー（と、そこから入れる数字）、⌫、空白（次候補）、改行（確定）
+    private func isAllowedWhileSelecting(_ def: KeyDef) -> Bool {
+        if def.id.hasPrefix("digit") { return true }
+        switch def.action {
+        case .numberPad, .delete, .space, .newline: return true
+        default: return false
+        }
     }
 
     private func isLetterKey(_ def: KeyDef) -> Bool {
@@ -626,6 +637,9 @@ final class KeyboardViewController: UIInputViewController {
             if proxy.enablesReturnKeyAutomatically == true, !proxy.hasText {
                 disabled.insert("newline")
             }
+        }
+        if composer.selectedIndex != nil {
+            for k in keyboardView.keys where !isAllowedWhileSelecting(k.def) { disabled.insert(k.def.id) }
         }
         labels["width"] = japanese ? "あ" : "A"
         if mode != .kana { labels["space"] = composer.isEmpty ? (japanese ? "空白" : "space") : "次候補" }
