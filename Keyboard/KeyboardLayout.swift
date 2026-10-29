@@ -58,15 +58,24 @@ enum KeyboardLayout {
         var colW: [CGFloat] = []
         if oneHand {
             for i in 0..<n {
-                let dist = n > 1 ? CGFloat(n - 1 - i) / CGFloat(n - 1) : 0   // 左ほど親指から遠い
-                colW.append(mm(s.keyWidthMM) * (1 + e * dist) * fit)
+                // 左ほど親指から遠い
+                let dist: CGFloat = n > 1 ? CGFloat(n - 1 - i) / CGFloat(n - 1) : 0
+                let grow: CGFloat = 1 + e * dist
+                let base: CGFloat = mm(s.keyWidthMM)
+                colW.append(base * grow * fit)
             }
         } else {
-            let w = (W - 2 * m - CGFloat(n - 1) * g) / CGFloat(n)
+            let gaps: CGFloat = CGFloat(n - 1) * g
+            let w: CGFloat = (W - 2 * m - gaps) / CGFloat(n)
             colW = Array(repeating: w, count: n)
         }
-        let rowH: [CGFloat] = (0..<4).map { r in
-            mm(s.keyHeightMM) * (1 + (oneHand ? e : 0) * CGFloat(3 - r) / 3)
+        let baseH: CGFloat = mm(s.keyHeightMM)
+        let growH: CGFloat = oneHand ? e : 0
+        var rowH: [CGFloat] = []
+        for r in 0..<4 {
+            let dist: CGFloat = CGFloat(3 - r) / 3
+            let grow: CGFloat = 1 + growH * dist
+            rowH.append(baseH * grow)
         }
 
         var raws: [Raw] = []
@@ -103,11 +112,12 @@ enum KeyboardLayout {
                 outer[r] = R + rowH[r]
                 R = outer[r] + g
             }
-            let refR = (inner[3] + outer[0]) / 2
-            let spans = colW.map { ($0 + g) / refR }
-            let total = spans.reduce(0, +)
-            let center = CGFloat(s.fanAngleDeg) * .pi / 180
-            var leftEdge = center + total / 2
+            let refR: CGFloat = (inner[3] + outer[0]) / 2
+            var spans: [CGFloat] = []
+            for w in colW { spans.append((w + g) / refR) }
+            let total: CGFloat = spans.reduce(0, +)
+            let center: CGFloat = CGFloat(s.fanAngleDeg) * CGFloat.pi / 180
+            var leftEdge: CGFloat = center + total / 2
             for (i, col) in cols.enumerated() {
                 let tl = leftEdge, tr = leftEdge - spans[i]
                 leftEdge = tr
@@ -116,14 +126,20 @@ enum KeyboardLayout {
                     let ro = outer[r]
                     var ri = inner[r]
                     if def.rowSpan == 2, r + 1 < 4 { ri = inner[r + 1] }
-                    let rc = (ri + ro) / 2, tc = (tl + tr) / 2
+                    let rc: CGFloat = (ri + ro) / 2
+                    let tc: CGFloat = (tl + tr) / 2
+                    let cx: CGFloat = rc * cos(tc)
+                    let cy: CGFloat = -rc * sin(tc)
+                    let rot: CGFloat = CGFloat.pi / 2 - tc
+                    let kw: CGFloat = rc * (tl - tr) - g
+                    let kh: CGFloat = ro - ri
                     raws.append(Raw(
                         def: def,
                         points: sector(ri: ri, ro: ro, tr: tr, tl: tl, gap: g),
                         isSector: true,
-                        center: CGPoint(x: rc * cos(tc), y: -rc * sin(tc)),
-                        rotation: -(tc - .pi / 2),
-                        size: CGSize(width: rc * (tl - tr) - g, height: ro - ri)))
+                        center: CGPoint(x: cx, y: cy),
+                        rotation: rot,
+                        size: CGSize(width: kw, height: kh)))
                 }
             }
         }
@@ -142,31 +158,40 @@ enum KeyboardLayout {
     /// くさび形キーの輪郭。隙間が均一になるよう、半径ごとに角度の余白を変える。
     private static func sector(ri: CGFloat, ro: CGFloat, tr: CGFloat, tl: CGFloat, gap g: CGFloat) -> [CGPoint] {
         let pad: CGFloat = 1.5   // 角を丸めるための線幅の半分
-        let half = g / 2 + pad
-        let rIn = ri + pad, rOut = ro - pad
+        let half: CGFloat = g / 2 + pad
+        let rIn: CGFloat = ri + pad
+        let rOut: CGFloat = ro - pad
         func edges(_ rho: CGFloat) -> (CGFloat, CGFloat) {
-            let d = asin(min(1, half / rho))
+            let d: CGFloat = asin(min(1, half / rho))
             return (tr + d, tl - d)
         }
         let steps = 12
         var pts: [CGPoint] = []
         let (a0, a1) = edges(rIn)
         for k in 0...steps {
-            let t = a0 + (a1 - a0) * CGFloat(k) / CGFloat(steps)
+            let f: CGFloat = CGFloat(k) / CGFloat(steps)
+            let t: CGFloat = a0 + (a1 - a0) * f
             pts.append(CGPoint(x: rIn * cos(t), y: -rIn * sin(t)))
         }
         let (b0, b1) = edges(rOut)
         for k in 0...steps {
-            let t = b1 + (b0 - b1) * CGFloat(k) / CGFloat(steps)
+            let f: CGFloat = CGFloat(k) / CGFloat(steps)
+            let t: CGFloat = b1 + (b0 - b1) * f
             pts.append(CGPoint(x: rOut * cos(t), y: -rOut * sin(t)))
         }
         return pts
     }
 
     private static func place(_ b: Built, _ s: KeyboardSettings, _ W: CGFloat, _ fit: CGFloat) -> LayoutResult {
-        let m = mm(s.marginMM), topPad = mm(1.5)
-        let dx = s.shape == .standard ? (W - b.width) / 2 - b.minX : W - m - b.maxX
-        let dy = topPad - b.minY
+        let m: CGFloat = mm(s.marginMM)
+        let topPad: CGFloat = mm(1.5)
+        let dx: CGFloat
+        if s.shape == .standard {
+            dx = (W - b.width) / 2 - b.minX
+        } else {
+            dx = W - m - b.maxX
+        }
+        let dy: CGFloat = topPad - b.minY
         let keys: [LaidKey] = b.keys.map { raw in
             let pts = raw.points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
             let path: UIBezierPath
@@ -186,7 +211,7 @@ enum KeyboardLayout {
                            center: CGPoint(x: raw.center.x + dx, y: raw.center.y + dy),
                            rotation: raw.rotation, size: raw.size, isSector: raw.isSector)
         }
-        let keysBottom = topPad + (b.maxY - b.minY)
+        let keysBottom: CGFloat = topPad + (b.maxY - b.minY)
         return LayoutResult(keys: keys, keysBottom: keysBottom,
                             height: ceil(keysBottom + mm(s.bottomMarginMM)), fit: fit)
     }

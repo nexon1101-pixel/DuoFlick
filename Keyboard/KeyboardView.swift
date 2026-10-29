@@ -104,7 +104,8 @@ final class KeyboardView: UIView {
 
             let m = min(k.size.width, k.size.height)
             let single = k.def.isKana && k.def.label.count == 1
-            let font = UIFont.systemFont(ofSize: m * (single ? 0.44 : 0.28), weight: .regular)
+            let ratio: CGFloat = single ? 0.44 : 0.28
+            let font = UIFont.systemFont(ofSize: m * ratio, weight: .regular)
             drawText(k.def.label, center: k.center, rotation: k.rotation, font: font,
                      color: isPressed ? Palette.pressedText : Palette.text, in: ctx)
         }
@@ -137,7 +138,9 @@ final class KeyboardView: UIView {
         for (d, ox, oy) in cells {
             let ch = chars[d.rawValue]
             if ch.isEmpty { continue }
-            let r = CGRect(x: ox * w - w / 2 + 1, y: oy * h - h / 2 + 1, width: w - 2, height: h - 2)
+            let rx: CGFloat = ox * w - w / 2 + 1
+            let ry: CGFloat = oy * h - h / 2 + 1
+            let r = CGRect(x: rx, y: ry, width: w - 2, height: h - 2)
             let p = UIBezierPath(roundedRect: r, cornerRadius: 6)
             (d == selected ? Palette.pressed : Palette.guide).setFill()
             p.fill()
@@ -161,22 +164,32 @@ final class KeyboardView: UIView {
         var bestDistance = CGFloat.greatestFiniteMagnitude
         for k in keys {
             if k.path.contains(p) { return k }
-            let dx = p.x - k.center.x, dy = p.y - k.center.y
-            let c = cos(k.rotation), s = sin(k.rotation)
-            let lx = dx * c + dy * s, ly = -dx * s + dy * c
-            let d = hypot(max(0, abs(lx) - k.size.width / 2), max(0, abs(ly) - k.size.height / 2))
+            let dx: CGFloat = p.x - k.center.x
+            let dy: CGFloat = p.y - k.center.y
+            let c: CGFloat = cos(k.rotation)
+            let s: CGFloat = sin(k.rotation)
+            let lx: CGFloat = dx * c + dy * s
+            let ly: CGFloat = dy * c - dx * s
+            let ox: CGFloat = max(0, abs(lx) - k.size.width / 2)
+            let oy: CGFloat = max(0, abs(ly) - k.size.height / 2)
+            let d: CGFloat = hypot(ox, oy)
             if d < bestDistance { bestDistance = d; best = k }
         }
-        return bestDistance <= 8 * CGFloat(KeyboardSettings.ptPerMM) ? best : nil
+        let limit: CGFloat = 8 * CGFloat(KeyboardSettings.ptPerMM)
+        return bestDistance <= limit ? best : nil
     }
 
     private func direction(_ k: LaidKey, from s: CGPoint, to e: CGPoint) -> FlickDirection {
         guard k.def.isKana else { return .tap }
-        let dx = e.x - s.x, dy = e.y - s.y
-        let lengthMM = hypot(dx, dy) / CGFloat(KeyboardSettings.ptPerMM)
+        let dx: CGFloat = e.x - s.x
+        let dy: CGFloat = e.y - s.y
+        let lengthMM: CGFloat = hypot(dx, dy) / CGFloat(KeyboardSettings.ptPerMM)
         if lengthMM < CGFloat(settings.flickMinMM) { return .tap }
         // キーの傾きと、設定した傾き補正を差し引いた角度（右=0、上=90）
-        var a = atan2(-dy, dx) * 180 / .pi + k.rotation * 180 / .pi - CGFloat(settings.tiltDeg)
+        let toDeg: CGFloat = 180 / CGFloat.pi
+        let raw: CGFloat = atan2(-dy, dx) * toDeg
+        let keyTilt: CGFloat = k.rotation * toDeg
+        var a: CGFloat = raw + keyTilt - CGFloat(settings.tiltDeg)
         a = a.truncatingRemainder(dividingBy: 360)
         if a < 0 { a += 360 }
         if a < 45 || a >= 315 { return .right }
