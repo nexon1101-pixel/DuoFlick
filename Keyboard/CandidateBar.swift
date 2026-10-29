@@ -87,6 +87,15 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         // 同じ内容なら作り直さない（ちらつきと無駄な処理を防ぐ）
         if list == shownItems && selected == shownSelected { return }
         let wasEmpty = shownItems.isEmpty
+        // 候補がなくなるときは、上へスライドしながら消す
+        if list.isEmpty, !wasEmpty, let snap = stack.snapshotView(afterScreenUpdates: false) {
+            snap.frame = scroll.convert(stack.frame, to: self)
+            addSubview(snap)
+            UIView.animate(withDuration: 0.16, delay: 0, options: .curveEaseIn, animations: {
+                snap.alpha = 0
+                snap.transform = CGAffineTransform(translationX: 0, y: -14)
+            }, completion: { _ in snap.removeFromSuperview() })
+        }
         shownItems = list
         shownSelected = selected
         for v in stack.arrangedSubviews {

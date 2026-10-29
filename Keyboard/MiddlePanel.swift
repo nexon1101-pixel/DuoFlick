@@ -12,24 +12,19 @@ struct MiddlePanel: View {
     var onSwipeDown: (() -> Void)? = nil
 
     var body: some View {
-        ScrollView {
-            FlowRows(spacing: 0) {
-                ForEach(Array(model.items.enumerated()), id: \.offset) { i, text in
-                    Button { onSelect(i) } label: {
-                        Text(text)
-                            .font(.system(size: 20))
-                            .lineLimit(1)
-                            .foregroundStyle(Color(uiColor: model.selected == i ? Palette.pressedText : Palette.text))
-                            .padding(.horizontal, 12)
-                            .frame(minWidth: 52, minHeight: 44)
-                            .background(model.selected == i ? Color(uiColor: Palette.pressed) : Color.clear)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 0.5)
-                    }
-                }
+        LazyFlow(items: model.items, font: .systemFont(ofSize: 20), hPad: 12, minWidth: 52, rowHeight: 44) { i, text in
+            Button { onSelect(i) } label: {
+                Text(text)
+                    .font(.system(size: 20))
+                    .lineLimit(1)
+                    .foregroundStyle(Color(uiColor: model.selected == i ? Palette.pressedText : Palette.text))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(model.selected == i ? Color(uiColor: Palette.pressed) : Color.clear)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 0.5)
             }
         }
         // 下に素早くフリックしたら、キーボードを閉じる

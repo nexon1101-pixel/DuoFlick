@@ -86,7 +86,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.onSwipeDown = { [weak self] in
             // 帯を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
             self?.commitAll()
-            self?.dismissKeyboard()
+            self?.dismissAnimated()
         }
 
         composer.userWords = dictionary.words
@@ -105,6 +105,8 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        view.transform = .identity
+        view.alpha = 1
         applyKeyboardType()
         haptic.prepare()
         flickHaptic.prepare()
@@ -749,7 +751,7 @@ final class KeyboardViewController: UIInputViewController {
     private func toggleCandidateList() {
         if listHost != nil { hideCandidateList(); refreshBar(); return }
         composer.refreshIfNeeded()
-        let list = CandidateList(items: composer.listTexts) { [weak self] i in
+        let list = CandidateList(items: Array(composer.listTexts.prefix(120))) { [weak self] i in
             guard let self else { return }
             self.hideCandidateList()
             self.commitCandidate(i)
@@ -782,12 +784,33 @@ final class KeyboardViewController: UIInputViewController {
 
     private func hideCandidateList() {
         guard let host = listHost else { return }
-        host.willMove(toParent: nil)
-        host.view.removeFromSuperview()
-        host.removeFromParent()
+        // 状態はすぐ戻し（続けて開閉できるように）、見た目だけ上へスライドしながら消す
         listHost = nil
         keyboardView.isHidden = false
         middleHost?.view.isHidden = false
+        host.willMove(toParent: nil)
+        UIView.animate(withDuration: 0.16, delay: 0, options: .curveEaseIn, animations: {
+            host.view.alpha = 0
+            host.view.transform = CGAffineTransform(translationX: 0, y: -24)
+        }, completion: { _ in
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+        })
+    }
+
+    /// キーボードを閉じる。下へスライドしながら消えてから閉じる
+    private func dismissAnimated() {
+        UIView.animate(withDuration: 0.18, delay: 0, options: .curveEaseIn, animations: {
+            self.view.transform = CGAffineTransform(translationX: 0, y: self.view.bounds.height * 0.35)
+            self.view.alpha = 0
+        }, completion: { _ in
+            self.dismissKeyboard()
+            // 閉じられなかったときのために、少しあとで元に戻す（次に開いたときも元の位置にする）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                self.view.transform = .identity
+                self.view.alpha = 1
+            }
+        })
     }
 
     /// 「@」のあとに出す、よく使うメールのドメイン
@@ -826,7 +849,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func showBar(_ items: [String], selected: Int?) {
         candidateBar.show(items, selected: selected)
-        panelModel.items = composer.isEmpty ? items : composer.listTexts
+        panelModel.items = Array((composer.isEmpty ? items : composer.listTexts).prefix(60))
         panelModel.selected = selected
     }
 
@@ -846,7 +869,7 @@ final class KeyboardViewController: UIInputViewController {
             }, onSwipeDown: { [weak self] in
                 // 真ん中を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
                 self?.commitAll()
-                self?.dismissKeyboard()
+                self?.dismissAnimated()
             }))
             host.view.backgroundColor = .clear
             addChild(host)

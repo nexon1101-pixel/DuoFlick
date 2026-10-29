@@ -6,26 +6,21 @@ struct CandidateList: View {
     let onSelect: (Int) -> Void
 
     var body: some View {
-        ScrollView {
-            FlowRows(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { i, text in
-                    Button { onSelect(i) } label: {
-                        Text(text)
-                            .font(.system(size: 20))
-                            .lineLimit(1)
-                            .foregroundStyle(Color(uiColor: Palette.text))
-                            .padding(.horizontal, 14)
-                            .frame(minWidth: 52, minHeight: 46)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .overlay(alignment: .trailing) {
-                        Rectangle().fill(Color.secondary.opacity(0.25)).frame(width: 0.5).padding(.vertical, 10)
-                    }
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 0.5)
-                    }
-                }
+        LazyFlow(items: items, font: .systemFont(ofSize: 20), hPad: 14, minWidth: 52, rowHeight: 46) { i, text in
+            Button { onSelect(i) } label: {
+                Text(text)
+                    .font(.system(size: 20))
+                    .lineLimit(1)
+                    .foregroundStyle(Color(uiColor: Palette.text))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .overlay(alignment: .trailing) {
+                Rectangle().fill(Color.secondary.opacity(0.25)).frame(width: 0.5).padding(.vertical, 10)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 0.5)
             }
         }
     }
