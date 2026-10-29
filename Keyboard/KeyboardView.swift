@@ -229,7 +229,7 @@ final class KeyboardView: UIView {
 
     /// 数字の枠のマスの大きさ（キーより大きくして、選びやすくする）
     private func numberCell(_ a: Active) -> CGSize {
-        let side: CGFloat = max(a.key.size.width, a.key.size.height) * 1.3
+        let side: CGFloat = max(a.key.size.width, a.key.size.height) * 1.4
         return CGSize(width: side, height: side)
     }
 
@@ -271,7 +271,7 @@ final class KeyboardView: UIView {
         let dx: CGFloat = p.x - a.start.x
         let dy: CGFloat = p.y - a.start.y
         let need: CGFloat = max(CGFloat(settings.flickMinMM) * CGFloat(KeyboardSettings.ptPerMM),
-                                min(a.key.size.width, a.key.size.height) * 0.7)
+                                min(a.key.size.width, a.key.size.height) * 0.5)
         guard hypot(dx, dy) >= need else { return }
         a.numberStage = dy < 0 ? 0 : 1
         let cell = numberCell(a)
