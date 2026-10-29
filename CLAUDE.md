@@ -17,8 +17,8 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
   - 開始：`gh api -X POST repos/nexon1101-pixel/DuoFlick/actions/workflows/build.yml/dispatches -f ref=main`
   - ipa は Python の zipfile で作る（UTF-8 のファイル名。これをしないと辞書の日本語ファイル名が化けて漢字変換が出なくなった）
   - パッケージの framework（llama.framework など）を DuoFlick.app/Frameworks に入れる（入れないと起動時に落ちた）
-- 入れ方：Windows の Sideloadly + 無料の Apple ID。7日で署名が切れる
-- 無料アカウントのため App Groups が使えない。設定はキーボード拡張の UserDefaults にだけ保存しており、アプリ本体とは共有できない。設定画面がキーボードの中にあるのはこのため
+- 入れ方：Windows の Sideloadly + 無料の Apple ID。7日で署名が切れる。最初に USB で iTunes の「Wi-Fi経由で同期」をオンにすれば、以後は Wi-Fi で入れられ、Sideloadly の自動更新も Wi-Fi で動く
+- 今は Sideloadly のため App Groups が使えない。設定はキーボード拡張の UserDefaults にだけ保存しており、アプリ本体とは共有できない。設定画面がキーボードの中にあるのはこのため（SideStore なら使える見込み。下の「未解決」を参照）
 
 ## 中身（Keyboard/）
 
@@ -27,8 +27,8 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 | KeyboardViewController.swift | 全体のつなぎ。キー入力の処理、変換の反映（setMarkedText で入力中、insertText で確定）、パネルの表示、トグル入力、⇧と全角 |
 | KeyCatalog.swift | 文字種（kana / qwerty / symbol / symbol2）、キーの働き（KeyAction）、かなの列と左右の列、QWERTY と記号の行 |
 | KeyboardLayout.swift | キーの位置。かなは格子・片手格子・扇形（左手は左右反転）、英字は横並び |
-| KeyboardView.swift | 描画とタッチ判定。フリック方向、⌫の連続削除、空白長押しのカーソル移動、数字キーの2段操作、ずれ補正 |
-| GuideOverlayView.swift | フリック中の十字ガイド（候補の帯の上にも描く） |
+| KeyboardView.swift | 描画とタッチ判定。フリック方向、⌫の連続削除、空白長押しのカーソル移動、数字キーの2段操作、ずれ補正と斜めのくせの補正 |
+| GuideOverlayView.swift | フリック中のガイド（押すと十字、方向を選ぶと吹き出し。候補の帯の上にも描く） |
 | KeyboardSettings.swift | 設定値、画面（外側・内側）と持ち方（片手・両手）ごとの保存、保存と呼び出し |
 | SettingsScreen.swift | 設定画面（一覧）と、キーを見ながら大きさを変える帯（AdjustBar） |
 | Composer.swift | かな漢字変換（AzooKeyKanaKanjiConverter v0.9、revision 固定）。候補・予測・学習・文節 |
@@ -37,7 +37,7 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 | TextStores / TextListPanel | 定型文とクリップボード履歴（固定できる） |
 | UserDictionary / RegisterPanel | 単語登録 |
 
-## 今のキー配置（v0.12）
+## 今のキー配置（v0.13）
 
 かな（5列）
 ```
@@ -80,8 +80,6 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
   - やること：①アプリとキーボードに App Groups の entitlements を入れる ②ビルドの最後に entitlements を埋め込む仮署名（codesign -s - --entitlements）をする（今は署名なしで entitlements が入っていない）③設定の保存先を App Group の共有場所に変え、名前は起動時に読む ④アプリ本体に設定メニューを作る
   - 進め方：先に SideStore の準備（AltServer・JitterbugPair・StosVPN・ペアリングファイル・ショートカットの自動化で毎日 Refresh apps）をしてから、DuoFlick の対応を入れる。Sideloadly で同じことができるかは不明
 - SideStore：毎日ショートカットの自動化で「Refresh apps」を動かせば、PCなしで7日の署名切れを防げる。自作アプリ3つの枠を1つ使う。キーボード拡張が残るかは要確認
-
-- v0.10 のビルド結果は未確認（大きな変更のため、型推論エラーなどが出る可能性あり）
-- v0.11：英字の「A／あ」キーでローマ字かな入力を追加。実機での確認待ち
+- v0.13 までのビルドはすべて成功。v0.10 以降の変更（新しいキー配置、数字キー、QWERTY とローマ字かな入力、吹き出しのガイド、斜めのくせの補正）は実機での確認待ち
 - 改行が確定にならないという報告があった。処理は「入力中なら確定」になっているので、再発したら使っていたアプリと状況を聞く
 - 「ないようぺーすとできない」という報告の意味がまだ分かっていない
