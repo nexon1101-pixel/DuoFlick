@@ -341,9 +341,14 @@ final class KeyboardViewController: UIInputViewController {
             model.toggleGrip()
         case .delete:
             if dir == .left {
+                deleteLine()
+            } else if dir == .up {
                 deleteWord()
+            } else if dir == .down {
+                undoDelete()
             } else if composer.isEmpty {
                 composer.clearPredictions()
+                if let ch = proxy.documentContextBeforeInput?.last { recordDeleted(String(ch), merge: true) }
                 proxy.deleteBackward()
                 refreshBar()
             } else {
@@ -533,7 +538,47 @@ final class KeyboardViewController: UIInputViewController {
             let kind = charKind(last)
             count = before.reversed().prefix { charKind($0) == kind }.count
         }
+        recordDeleted(String(before.suffix(max(1, count))), merge: false)
         for _ in 0..<max(1, count) { proxy.deleteBackward() }
+        refreshBar()
+    }
+
+    /// ⌫の左フリック：入力中なら全部消す。そうでなければ、いまの行の、カーソルより前を消す
+    private func deleteLine() {
+        if !composer.isEmpty {
+            composer.reset()
+            updateComposition()
+            return
+        }
+        composer.clearPredictions()
+        let proxy = textDocumentProxy
+        guard let before = proxy.documentContextBeforeInput, !before.isEmpty else { refreshBar(); return }
+        let line = before.split(separator: "\n", omittingEmptySubsequences: false).last.map(String.init) ?? ""
+        // 行の先頭にいるときは、前の行との改行を消す
+        let text = line.isEmpty ? "\n" : line
+        recordDeleted(text, merge: false)
+        for _ in 0..<text.count { proxy.deleteBackward() }
+        refreshBar()
+    }
+
+    /// 消した文字の記録（⌫の下フリックで元に戻す）。続けて消した文字は1つにまとめる
+    private var deletedStack: [String] = []
+    private var lastDeleteTime = Date.distantPast
+    private func recordDeleted(_ text: String, merge: Bool) {
+        if merge, Date().timeIntervalSince(lastDeleteTime) < 0.8, let last = deletedStack.last {
+            deletedStack[deletedStack.count - 1] = text + last
+        } else {
+            deletedStack.append(text)
+            if deletedStack.count > 30 { deletedStack.removeFirst() }
+        }
+        lastDeleteTime = Date()
+    }
+
+    /// ⌫の下フリック：直前に消した文字を戻す
+    private func undoDelete() {
+        guard composer.isEmpty, let text = deletedStack.popLast() else { return }
+        composer.clearPredictions()
+        textDocumentProxy.insertText(text)
         refreshBar()
     }
 
@@ -1004,7 +1049,7 @@ final class KeyboardViewController: UIInputViewController {
             onSecondary: nil,
             onSelect: { [weak self] text in self?.insertFromPanel(text) },
             onClose: { [weak self] in self?.hidePanel() })
-        showPanel(panel)
+        showPanel(panel, hidesKeys: true)
     }
 
     private func showEmoji() {
@@ -1017,7 +1062,7 @@ final class KeyboardViewController: UIInputViewController {
                 self.lastCommit = nil
             },
             onClose: { [weak self] in self?.hidePanel() })
-        showPanel(panel)
+        showPanel(panel, hidesKeys: true)
     }
 
     private func showClipboard() {
@@ -1035,7 +1080,7 @@ final class KeyboardViewController: UIInputViewController {
             onSecondary: { [weak self] text in self?.phrases.add(text) },
             onSelect: { [weak self] text in self?.insertFromPanel(text) },
             onClose: { [weak self] in self?.hidePanel() })
-        showPanel(panel)
+        showPanel(panel, hidesKeys: true)
     }
 
     private func addPhraseFromSelection() {
@@ -1053,9 +1098,11 @@ final class KeyboardViewController: UIInputViewController {
         refreshBar()
     }
 
-    private func showPanel<V: View>(_ panel: V) {
+    private func showPanel<V: View>(_ panel: V, hidesKeys: Bool = false) {
         hidePanel()
         hideCandidateList()
+        keyboardView.isHidden = hidesKeys
+        middleHost?.view.isHidden = hidesKeys
         let host = UIHostingController(rootView: panel)
         host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -1077,6 +1124,8 @@ final class KeyboardViewController: UIInputViewController {
         host.view.removeFromSuperview()
         host.removeFromParent()
         panelHost = nil
+        keyboardView.isHidden = false
+        middleHost?.view.isHidden = false
     }
 
     // MARK: - 単語登録

@@ -92,7 +92,15 @@ final class GuideOverlayView: UIView {
             let maxX: CGFloat = bounds.width - halfW - inset
             let minY: CGFloat = halfH + inset
             let maxY: CGFloat = bounds.height - halfH - inset
-            if minX <= maxX { gx = min(max(gx, minX), maxX) }
+            if g.rotation == 0 {
+                // 傾いていないキー（端のキーなど）は、十字全体をずらさず、はみ出す方向の候補だけを内側へ寄せる
+                // （全体をずらすと、指の位置と候補がずれて見える）
+                let lo: CGFloat = (w / 2 + inset - gx) / w
+                let hi: CGFloat = (bounds.width - w / 2 - inset - gx) / w
+                if lo <= hi { cells = cells.map { ($0.0, min(max($0.1, lo), hi), $0.2) } }
+            } else if minX <= maxX {
+                gx = min(max(gx, minX), maxX)
+            }
             if minY <= maxY { gy = min(max(gy, minY), maxY) }
         }
 
