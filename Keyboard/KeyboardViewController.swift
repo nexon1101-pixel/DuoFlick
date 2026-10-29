@@ -190,6 +190,8 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         domainCandidates = []
+        let expectedClose = pairClose
+        pairClose = nil
         // 変換待ち（読みに下線が出ている間）は、数字キーと、⌫・次候補・確定のキー以外は押せない（設定でオフにできる）
         if composingLocked, !isAllowedWhileComposing(def) { return }
         let proxy = textDocumentProxy
@@ -240,6 +242,21 @@ final class KeyboardViewController: UIInputViewController {
             composer.clearPredictions()
             let s = styled(pick(chars, dir))
             if toggle != nil { toggle?.output = s }
+            if let close = Self.bracketPairs[s] {
+                // 括弧は対で入れて、中にカーソルを置く
+                proxy.insertText(s + close)
+                proxy.adjustTextPosition(byCharacterOffset: -1)
+                pairClose = close
+                refreshBar()
+                updateShiftDisplay()
+                return
+            }
+            if expectedClose == s, proxy.documentContextAfterInput?.first == Character(s) {
+                // 対で入れた閉じ括弧を打ったら、重ねずに外へ出る
+                proxy.adjustTextPosition(byCharacterOffset: 1)
+                refreshBar()
+                return
+            }
             proxy.insertText(s)
             // 「@」を打ったら、よく使うメールのドメインを候補に出す
             if s == "@" { domainCandidates = Self.mailDomains }
@@ -280,6 +297,13 @@ final class KeyboardViewController: UIInputViewController {
             japanese.toggle()
             shiftState = .off
             updateKeyLabels()
+        case .paste:
+            if let text = UIPasteboard.general.string, !text.isEmpty {
+                commitAll()
+                composer.clearPredictions()
+                proxy.insertText(text)
+                refreshBar()
+            }
         case .numberPad:
             break
         case .gripSwitch:
@@ -713,6 +737,9 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 「@」のあとに出す、よく使うメールのドメイン
     private var domainCandidates: [String] = []
+    /// 括弧を対で入れた直後の、閉じ括弧
+    private var pairClose: String?
+    private static let bracketPairs = ["(": ")", "[": "]", "{": "}"]
     private static let mailDomains = [
         "gmail.com", "icloud.com", "yahoo.co.jp", "outlook.jp", "outlook.com", "docomo.ne.jp",
         "ezweb.ne.jp", "au.com", "softbank.ne.jp", "i.softbank.jp", "hotmail.co.jp", "hotmail.com",

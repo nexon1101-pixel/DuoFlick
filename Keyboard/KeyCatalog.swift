@@ -34,6 +34,7 @@ enum KeyAction {
     case modeSwitch
     case settings
     case nextKeyboard
+    case paste            // クリップボードの文字をそのまま貼り付ける
 }
 
 struct KeyDef {
@@ -59,6 +60,8 @@ struct KeyDef {
         case .nextKeyboard: return "globe"
         case .shift: return "shift"
         case .delete: return "delete.left"
+        case .paste: return "doc.on.clipboard"
+        case .gripSwitch: return label == "片手" ? "iphone" : "ipad"
         default: return nil
         }
     }
@@ -151,8 +154,9 @@ enum KeyCatalog {
             (def: KeyDef(id: "layer", label: mode == .qwerty ? "123" : "ABC",
                          action: .layer(mode == .qwerty ? .symbol : .qwerty)), weight: 1.2),
             (def: KeyDef(id: "mode", label: "あいう", action: .modeSwitch), weight: 1.2),
+            (def: KeyDef(id: "paste", label: "貼付", action: .paste), weight: 1.2),
             (def: KeyDef(id: "width", label: "A", action: .widthToggle), weight: 1.2),
-            (def: KeyDef(id: "space", label: "space", action: .space), weight: 4.4),
+            (def: KeyDef(id: "space", label: "space", action: .space), weight: 3.2),
             (def: KeyDef(id: "newline", label: "改行", action: .newline), weight: 2.0),
         ]
         switch mode {
