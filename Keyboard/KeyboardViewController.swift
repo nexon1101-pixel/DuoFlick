@@ -217,6 +217,13 @@ final class KeyboardViewController: UIInputViewController {
         // 変換待ち（読みに下線が出ている間）は、ABC・地球儀・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
         if composingLocked, !isAllowedWhileComposing(def) { return }
         let proxy = textDocumentProxy
+        // ⌫の下フリック：確定の取り消し（↺）
+        if case .delete = def.action, dir == .down {
+            // 続けてタップの途中なら、ひとつ前の文字に戻す（iOS標準の↺と同じ）
+            if let t = toggle, let chars = t.def.flickChars, applyToggle(t.def, chars, step: -1) { return }
+            undoCommit()
+            return
+        }
         if case .newline = def.action, keyboardView.disabledIDs.contains(def.id) { return }
         lastCommit = nil
 
@@ -335,11 +342,8 @@ final class KeyboardViewController: UIInputViewController {
                 deleteLine()
             } else if dir == .up {
                 deleteWord()
-            } else if dir == .down {
-                undoDelete()
             } else if composer.isEmpty {
                 composer.clearPredictions()
-                if let ch = proxy.documentContextBeforeInput?.last { recordDeleted(String(ch), merge: true) }
                 proxy.deleteBackward()
                 refreshBar()
             } else {
@@ -529,7 +533,6 @@ final class KeyboardViewController: UIInputViewController {
             let kind = charKind(last)
             count = before.reversed().prefix { charKind($0) == kind }.count
         }
-        recordDeleted(String(before.suffix(max(1, count))), merge: false)
         for _ in 0..<max(1, count) { proxy.deleteBackward() }
         refreshBar()
     }
@@ -547,29 +550,7 @@ final class KeyboardViewController: UIInputViewController {
         let line = before.split(separator: "\n", omittingEmptySubsequences: false).last.map(String.init) ?? ""
         // 行の先頭にいるときは、前の行との改行を消す
         let text = line.isEmpty ? "\n" : line
-        recordDeleted(text, merge: false)
         for _ in 0..<text.count { proxy.deleteBackward() }
-        refreshBar()
-    }
-
-    /// 消した文字の記録（⌫の下フリックで元に戻す）。続けて消した文字は1つにまとめる
-    private var deletedStack: [String] = []
-    private var lastDeleteTime = Date.distantPast
-    private func recordDeleted(_ text: String, merge: Bool) {
-        if merge, Date().timeIntervalSince(lastDeleteTime) < 0.8, let last = deletedStack.last {
-            deletedStack[deletedStack.count - 1] = text + last
-        } else {
-            deletedStack.append(text)
-            if deletedStack.count > 30 { deletedStack.removeFirst() }
-        }
-        lastDeleteTime = Date()
-    }
-
-    /// ⌫の下フリック：直前に消した文字を戻す
-    private func undoDelete() {
-        guard composer.isEmpty, let text = deletedStack.popLast() else { return }
-        composer.clearPredictions()
-        textDocumentProxy.insertText(text)
         refreshBar()
     }
 
