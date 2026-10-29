@@ -337,13 +337,17 @@ final class KeyboardView: UIView {
     func resetOffset() {
         touchOffset = .zero
         UserDefaults.standard.removeObject(forKey: Self.offsetKey)
+        flickBounds = [0, 0, 0, 0]
+        UserDefaults.standard.removeObject(forKey: Self.boundsKey)
     }
 
     /// 調整バーに出す、今の補正量（mm）
     var offsetDescription: String {
         let mx = Double(touchOffset.x) / KeyboardSettings.ptPerMM
         let my = Double(touchOffset.y) / KeyboardSettings.ptPerMM
-        return String(format: "横 %+.1fmm・縦 %+.1fmm", mx, my)
+        let moved = flickBounds.filter { abs($0) >= 1 }.count
+        let angle = moved == 0 ? "" : "・方向 \(moved)か所"
+        return String(format: "横 %+.1fmm・縦 %+.1fmm", mx, my) + angle
     }
 
     // MARK: - 判定
@@ -370,24 +374,100 @@ final class KeyboardView: UIView {
         return bestDistance <= limit ? best : nil
     }
 
-    private func direction(_ k: LaidKey, from s: CGPoint, to e: CGPoint) -> FlickDirection {
-        guard k.def.isCharacter || k.def.isDelete || k.def.isSettings else { return .tap }
+    /// フリックの角度（右=0、上=90、0〜360）。キーの傾きと設定した傾き補正を差し引く。フリックに満たなければ nil
+    private func flickAngle(_ k: LaidKey, from s: CGPoint, to e: CGPoint) -> CGFloat? {
         let dx: CGFloat = e.x - s.x
         let dy: CGFloat = e.y - s.y
         let lengthMM: CGFloat = hypot(dx, dy) / CGFloat(KeyboardSettings.ptPerMM)
-        if lengthMM < CGFloat(settings.flickMinMM) { return .tap }
-        // キーの傾きと、設定した傾き補正を差し引いた角度（右=0、上=90）
+        if lengthMM < CGFloat(settings.flickMinMM) { return nil }
         let toDeg: CGFloat = 180 / CGFloat.pi
         let raw: CGFloat = atan2(-dy, dx) * toDeg
         let keyTilt: CGFloat = textRotation(k) * toDeg
         var a: CGFloat = raw + keyTilt - CGFloat(settings.tiltDeg)
         a = a.truncatingRemainder(dividingBy: 360)
         if a < 0 { a += 360 }
-        if a < 45 || a >= 315 { return .right }
-        if a < 135 { return .up }
-        if a < 225 { return .left }
-        return .down
+        return a
     }
+
+    private func direction(_ k: LaidKey, from s: CGPoint, to e: CGPoint) -> FlickDirection {
+        guard k.def.isCharacter || k.def.isDelete || k.def.isSettings else { return .tap }
+        guard let a = flickAngle(k, from: s, to: e) else { return .tap }
+        // 文字キーは、覚えたくせの分だけ方向の境目をずらす
+        let b: [CGFloat] = k.def.isCharacter && settings.autoCorrect ? flickBounds : [0, 0, 0, 0]
+        let edges: [CGFloat] = (0..<4).map { 45 + 90 * CGFloat($0) + b[$0] }
+        if a >= edges[0] && a < edges[1] { return .up }
+        if a >= edges[1] && a < edges[2] { return .left }
+        if a >= edges[2] && a < edges[3] { return .down }
+        return .right
+    }
+
+    // MARK: - 斜めのくせの補正
+
+    private static let boundsKey = "DuoFlick.flickBounds.v1"
+    /// 上下左右の境目（右上・左上・左下・右下）を、標準の45°からどれだけずらすか（度）
+    private(set) var flickBounds: [CGFloat] = {
+        let a = UserDefaults.standard.array(forKey: KeyboardView.boundsKey) as? [Double] ?? []
+        return a.count == 4 ? a.map { CGFloat($0) } : [0, 0, 0, 0]
+    }()
+
+    /// 直前の文字キーのフリックと、そのあと⌫で消したかどうか
+    private struct LastFlick {
+        let keyID: String
+        let dir: FlickDirection
+        let angle: CGFloat
+        let time: Date
+        var deleted = false
+    }
+    private var lastFlick: LastFlick?
+
+    /// 文字キーを離したときに呼ぶ。フリック→⌫→同じキーを隣の方向へフリック、の流れを判定ミスとみなして境目をずらす
+    private func noteFlick(_ k: LaidKey, dir: FlickDirection, from s: CGPoint, to e: CGPoint) {
+        let now = Date()
+        defer {
+            if dir != .tap, let angle = flickAngle(k, from: s, to: e) {
+                lastFlick = LastFlick(keyID: k.def.id, dir: dir, angle: angle, time: now)
+            } else {
+                lastFlick = nil
+            }
+        }
+        guard settings.autoCorrect, let last = lastFlick, last.deleted, last.keyID == k.def.id,
+              dir != .tap, dir != last.dir, now.timeIntervalSince(last.time) < 4,
+              let index = boundary(last.dir, dir) else { return }
+        learnBoundary(index, angle: last.angle, towards: dir)
+    }
+
+    /// ⌫で1文字消したときに呼ぶ
+    private func noteDelete() {
+        guard var last = lastFlick, !last.deleted else { lastFlick = nil; return }
+        last.deleted = true
+        lastFlick = last
+    }
+
+    /// 隣り合う2つの方向の間の境目の番号（0:右と上、1:上と左、2:左と下、3:下と右）
+    private func boundary(_ a: FlickDirection, _ b: FlickDirection) -> Int? {
+        let pair = Set([a, b])
+        if pair == [.right, .up] { return 0 }
+        if pair == [.up, .left] { return 1 }
+        if pair == [.left, .down] { return 2 }
+        if pair == [.down, .right] { return 3 }
+        return nil   // 反対向き（上と下など）は判定ミスではないので扱わない
+    }
+
+    private func learnBoundary(_ i: Int, angle: CGFloat, towards dir: FlickDirection) {
+        let edge: CGFloat = 45 + 90 * CGFloat(i) + flickBounds[i]
+        var a: CGFloat = angle
+        if i == 3 && a < 180 { a += 360 }   // 右下の境目は 315° をまたぐので、0°付近を 360° 以降として扱う
+        guard abs(a - edge) < 40 else { return }
+        // 境目より角度の大きい側の方向（0:上、1:左、2:下、3:右）
+        let upper: FlickDirection = [.up, .left, .down, .right][i]
+        // 今回の角度が、打ち直した方向の側に入るように境目を動かす（少しずつ、最大±20°）
+        let target: CGFloat = dir == upper ? a - 4 : a + 4
+        var b: CGFloat = flickBounds[i] + (target - edge) * 0.35
+        b = min(max(b, -20), 20)
+        flickBounds[i] = b
+        UserDefaults.standard.set(flickBounds.map { Double($0) }, forKey: Self.boundsKey)
+    }
+
 
     // MARK: - タッチ
 
@@ -477,8 +557,16 @@ final class KeyboardView: UIView {
                 continue
             }
             if !a.repeated && !a.cursorMode {
-                let dir = direction(a.key, from: a.start, to: t.location(in: self))
+                let end = t.location(in: self)
+                let dir = direction(a.key, from: a.start, to: end)
                 if dir == .tap, a.key.def.isCharacter { learnOffset(a.start, a.key) }
+                if a.key.def.isCharacter {
+                    noteFlick(a.key, dir: dir, from: a.start, to: end)
+                } else if a.key.def.isDelete && dir == .tap {
+                    noteDelete()
+                } else {
+                    lastFlick = nil
+                }
                 onKey?(a.key.def, dir)
             }
         }
