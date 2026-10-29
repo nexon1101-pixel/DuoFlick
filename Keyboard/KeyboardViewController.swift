@@ -686,7 +686,7 @@ final class KeyboardViewController: UIInputViewController {
                 pasteChip = canPaste && UIPasteboard.general.hasStrings
                 // 画像はキーボードから入れられないので、入力欄を長押しして貼り付けてもらう
                 imageChip = canPaste && !pasteChip && UIPasteboard.general.hasImages
-                showBar(pasteChip ? ["貼り付け"] : (imageChip ? ["画像がコピーされています（入力欄を長押しで貼り付け）"] : items), selected: nil)
+                showBar(pasteChip ? ["貼り付け"] : (imageChip ? ["画像がコピーされています　入力欄を長押しで貼り付け"] : items), selected: nil)
             }
             hideCandidateList()
         }
