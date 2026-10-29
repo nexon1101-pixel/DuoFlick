@@ -14,6 +14,7 @@ final class KeyboardViewController: UIInputViewController {
     private let phrases = PhraseStore()
     private let clipboard = ClipboardStore()
     private let haptic = UIImpactFeedbackGenerator(style: .light)
+    private let flickHaptic = UISelectionFeedbackGenerator()
     private var clipboardTimer: Timer?
     private var heightConstraint: NSLayoutConstraint?
     private var keyboardTop: NSLayoutConstraint?
@@ -70,6 +71,10 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.onPanelRect = { [weak self] rect in self?.updateMiddlePanel(rect) }
         keyboardView.onPinch = { [weak self] split in self?.setSplit(split) }
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
+        keyboardView.onFlickChange = { [weak self] in
+            guard let self, self.model.settings.haptics, self.hasFullAccess else { return }
+            self.flickHaptic.selectionChanged()
+        }
         keyboardView.onPress = { [weak self] in
             guard let self, self.model.settings.haptics, self.hasFullAccess else { return }
             self.haptic.impactOccurred()
@@ -102,6 +107,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         applyKeyboardType()
         haptic.prepare()
+        flickHaptic.prepare()
         // キーボードを開いている間にコピーされたものを、クリップボードの履歴に残す
         if hasFullAccess {
             importAppSettings()
@@ -1028,6 +1034,7 @@ final class KeyboardViewController: UIInputViewController {
         hidePanel()
         hideCandidateList()
         let host = UIHostingController(rootView: panel)
+        host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
         addChild(host)
         view.addSubview(host.view)

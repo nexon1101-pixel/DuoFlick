@@ -78,6 +78,8 @@ final class KeyboardView: UIView {
     var onKey: ((KeyDef, FlickDirection) -> Void)?
     /// キーを押した瞬間（キー音用）
     var onPress: (() -> Void)?
+    /// フリックで選んでいる方向が変わったとき（振動用）
+    var onFlickChange: (() -> Void)?
     var mode: InputMode = .kana {
         didSet { if mode != oldValue { numberLocked = false; relayout() } }
     }
@@ -127,6 +129,7 @@ final class KeyboardView: UIView {
         /// 数字キー：0なら0〜4、1なら5〜9の枠を開いた
         var numberStage: Int?
         var numberAnchor: CGPoint = .zero
+        var lastDir: FlickDirection = .tap
         init(key: LaidKey, start: CGPoint) {
             self.key = key
             self.start = start
@@ -517,6 +520,10 @@ final class KeyboardView: UIView {
             let p = t.location(in: self)
             a.current = p
             if a.key.def.isNumberPad { trackNumber(a, p) }
+            if a.key.def.flickChars != nil, !a.key.def.isNumberPad {
+                let d = direction(a.key, from: a.start, to: p)
+                if d != a.lastDir { a.lastDir = d; onFlickChange?() }
+            }
             if case .space = a.key.def.action, !a.cursorMode {
                 // 長押しを待たずに横へ大きく動かしたときも、カーソル移動にする
                 if abs(p.x - a.start.x) > stepPt * 1.5 {

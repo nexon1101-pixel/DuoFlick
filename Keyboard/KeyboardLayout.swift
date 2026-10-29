@@ -104,10 +104,11 @@ enum KeyboardLayout {
             row.map { (def: Optional($0.def), weight: $0.weight) }
         }
         // 両手持ちの分割：上の3段の真ん中に空きを入れる（最下段はそのまま）
-        let gapW: CGFloat = 1.2
+        let gapW: CGFloat = 2.6
         if split {
             for r in 0..<min(3, rows.count) {
-                let at: Int = r == 2 ? (mode == .qwerty ? 6 : 4) : 5
+                // g・v・b は右の組に入れる（a s d f | g h j k l、shift z x c | v b n m）
+                let at: Int = r == 2 ? 4 : (r == 1 && mode == .qwerty ? 4 : 5)
                 rows[r].insert((def: nil, weight: gapW), at: min(at, rows[r].count))
             }
         }
@@ -178,8 +179,8 @@ enum KeyboardLayout {
         } else {
             let gaps: CGFloat = CGFloat(n - 1) * g
             if split {
-                // 真ん中の空きは、幅の1割ほど（キーの列は9列）
-                let mid: CGFloat = (W - 2 * m) * 0.1
+                // 真ん中の空きは、幅の2割ほど（キーの列は9列）
+                let mid: CGFloat = (W - 2 * m) * 0.2
                 let w: CGFloat = (W - 2 * m - gaps - mid) / CGFloat(n - 1)
                 colW = (0..<n).map { $0 == 4 ? mid : w }
             } else {

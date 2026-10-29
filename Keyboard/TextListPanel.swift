@@ -89,6 +89,6 @@ struct TextListPanel: View {
                 }
             }
         }
-        .background(Color(uiColor: Palette.background))
+
     }
 }
