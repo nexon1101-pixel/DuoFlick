@@ -135,6 +135,13 @@ enum KeyCatalog {
         [leftColumn(mode, grip: grip)] + kanaColumns + [functionColumn(mode)]
     }
 
+    /// 両手持ち用：かなと⌫・空白・改行を左右に1組ずつ置き、真ん中を空ける。123・地球儀・ABC・両手のキーは右端に1列だけ
+    static func splitColumns(_ mode: InputMode, grip: Grip) -> [[KeyDef?]] {
+        let half = kanaColumns + [functionColumn(mode)]
+        let gap: [KeyDef?] = [nil, nil, nil, nil]
+        return half + [gap] + half + [leftColumn(mode, grip: grip)]
+    }
+
     // MARK: - 英字・記号（iPhone標準の英字キーボードと同じ並び）
 
     /// 1行分のキー。weight は幅の比率

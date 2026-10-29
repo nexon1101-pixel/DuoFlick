@@ -238,12 +238,12 @@ final class KeyboardView: UIView {
     }
 
     private func numberGuide(_ a: Active) -> FlickGuide {
-        let current = numberKey(at: a.current)?.def.id
+        let current = numberKey(at: a.current)?.center
         let cells: [GuideCell] = keys.compactMap { k in
             guard let d = Self.numberKeyDigits[k.def.id] else { return nil }
             let m: CGFloat = min(k.size.width, k.size.height)
             return GuideCell(path: k.path, center: k.center, rotation: textRotation(k), text: d,
-                             selected: k.def.id == current,
+                             selected: k.center == current,
                              fontSize: m * 0.5 * CGFloat(settings.labelScale), isSector: k.isSector)
         }
         return FlickGuide(center: .zero, size: .zero, rotation: 0, chars: [], selected: .tap, cells: cells)
