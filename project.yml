@@ -53,3 +53,4 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.wataru.duoflick.keyboard
+        SWIFT_OBJC_INTEROP_MODE: objcxx
