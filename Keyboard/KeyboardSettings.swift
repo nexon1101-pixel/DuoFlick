@@ -20,6 +20,30 @@ struct KeyboardSettings: Codable, Equatable {
     var fanAngleDeg: Double = 97
     var flickMinMM: Double = 3.5
     var tiltDeg: Double = 0
+    /// 扇形のとき、文字・フリックガイド・フリック方向をキーの傾きに合わせる
+    var followFan: Bool = true
+
+    init(shape: KeyboardShape = .standard) {
+        self.shape = shape
+    }
+
+    // 古い設定データに項目が足りなくても読めるようにする
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = KeyboardSettings()
+        shape = (try? c.decode(KeyboardShape.self, forKey: .shape)) ?? d.shape
+        keyWidthMM = (try? c.decode(Double.self, forKey: .keyWidthMM)) ?? d.keyWidthMM
+        keyHeightMM = (try? c.decode(Double.self, forKey: .keyHeightMM)) ?? d.keyHeightMM
+        gapMM = (try? c.decode(Double.self, forKey: .gapMM)) ?? d.gapMM
+        edgeGrowPercent = (try? c.decode(Double.self, forKey: .edgeGrowPercent)) ?? d.edgeGrowPercent
+        marginMM = (try? c.decode(Double.self, forKey: .marginMM)) ?? d.marginMM
+        bottomMarginMM = (try? c.decode(Double.self, forKey: .bottomMarginMM)) ?? d.bottomMarginMM
+        fanRadiusMM = (try? c.decode(Double.self, forKey: .fanRadiusMM)) ?? d.fanRadiusMM
+        fanAngleDeg = (try? c.decode(Double.self, forKey: .fanAngleDeg)) ?? d.fanAngleDeg
+        flickMinMM = (try? c.decode(Double.self, forKey: .flickMinMM)) ?? d.flickMinMM
+        tiltDeg = (try? c.decode(Double.self, forKey: .tiltDeg)) ?? d.tiltDeg
+        followFan = (try? c.decode(Bool.self, forKey: .followFan)) ?? d.followFan
+    }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。
     static let ptPerMM: Double = 6.1

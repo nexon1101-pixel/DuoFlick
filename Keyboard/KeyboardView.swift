@@ -29,6 +29,8 @@ final class KeyboardView: UIView {
         didSet { relayout() }
     }
     var onKey: ((KeyDef, FlickDirection) -> Void)?
+    /// 空白キー長押し中の左右移動。負の値で左へ。
+    var onCursor: ((Int) -> Void)?
 
     private(set) var keys: [LaidKey] = []
     private var keysBottom: CGFloat = 0
@@ -40,6 +42,8 @@ final class KeyboardView: UIView {
         var current: CGPoint
         var timer: Timer?
         var repeated = false
+        var cursorMode = false
+        var cursorAnchorX: CGFloat = 0
         init(key: LaidKey, start: CGPoint) {
             self.key = key
             self.start = start
@@ -87,6 +91,7 @@ final class KeyboardView: UIView {
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         let pressedIDs = Set(active.values.map { $0.key.def.id })
+        let cursorMode = active.values.contains { $0.cursorMode }
 
         for k in keys {
             let isPressed = pressedIDs.contains(k.def.id)
@@ -106,7 +111,9 @@ final class KeyboardView: UIView {
             let single = k.def.isKana && k.def.label.count == 1
             let ratio: CGFloat = single ? 0.44 : 0.28
             let font = UIFont.systemFont(ofSize: m * ratio, weight: .regular)
-            drawText(k.def.label, center: k.center, rotation: k.rotation, font: font,
+            var label = k.def.label
+            if cursorMode, case .space = k.def.action { label = "◀ ▶" }
+            drawText(label, center: k.center, rotation: textRotation(k), font: font,
                      color: isPressed ? Palette.pressedText : Palette.text, in: ctx)
         }
 
@@ -127,21 +134,40 @@ final class KeyboardView: UIView {
         ctx.restoreGState()
     }
 
+    private func textRotation(_ k: LaidKey) -> CGFloat {
+        settings.followFan ? k.rotation : 0
+    }
+
     /// 押している間、フリックで入る文字を十字に表示する
     private func drawGuide(_ k: LaidKey, chars: [String], selected: FlickDirection, in ctx: CGContext) {
         let w = k.size.width, h = k.size.height
         let cells: [(FlickDirection, CGFloat, CGFloat)] = [(.tap, 0, 0), (.left, -1, 0), (.up, 0, -1), (.right, 1, 0), (.down, 0, 1)]
         let font = UIFont.systemFont(ofSize: min(w, h) * 0.46, weight: .semibold)
+        // 十字全体（幅3キー×高さ3キー）がキーボードの枠に収まるよう、中心をずらす
+        let rot: CGFloat = textRotation(k)
+        let c: CGFloat = abs(cos(rot))
+        let s: CGFloat = abs(sin(rot))
+        let halfW: CGFloat = (1.5 * w) * c + (1.5 * h) * s
+        let halfH: CGFloat = (1.5 * w) * s + (1.5 * h) * c
+        let inset: CGFloat = 2
+        let minX: CGFloat = halfW + inset
+        let maxX: CGFloat = bounds.width - halfW - inset
+        let minY: CGFloat = halfH + inset
+        let maxY: CGFloat = bounds.height - halfH - inset
+        var gx: CGFloat = k.center.x
+        var gy: CGFloat = k.center.y
+        if minX <= maxX { gx = min(max(gx, minX), maxX) }
+        if minY <= maxY { gy = min(max(gy, minY), maxY) }
         ctx.saveGState()
-        ctx.translateBy(x: k.center.x, y: k.center.y)
-        ctx.rotate(by: k.rotation)
+        ctx.translateBy(x: gx, y: gy)
+        ctx.rotate(by: rot)
         for (d, ox, oy) in cells {
             let ch = chars[d.rawValue]
             if ch.isEmpty { continue }
             let rx: CGFloat = ox * w - w / 2 + 1
             let ry: CGFloat = oy * h - h / 2 + 1
             let r = CGRect(x: rx, y: ry, width: w - 2, height: h - 2)
-            let p = UIBezierPath(roundedRect: r, cornerRadius: 6)
+            let p = UIBezierPath(roundedRect: r, cornerRadius: KeyboardLayout.cornerRadius * 1.6)
             (d == selected ? Palette.pressed : Palette.guide).setFill()
             p.fill()
             Palette.shadow.setStroke()
@@ -188,7 +214,7 @@ final class KeyboardView: UIView {
         // キーの傾きと、設定した傾き補正を差し引いた角度（右=0、上=90）
         let toDeg: CGFloat = 180 / CGFloat.pi
         let raw: CGFloat = atan2(-dy, dx) * toDeg
-        let keyTilt: CGFloat = k.rotation * toDeg
+        let keyTilt: CGFloat = textRotation(k) * toDeg
         var a: CGFloat = raw + keyTilt - CGFloat(settings.tiltDeg)
         a = a.truncatingRemainder(dividingBy: 360)
         if a < 0 { a += 360 }
@@ -215,14 +241,41 @@ final class KeyboardView: UIView {
                     }
                 }
             }
+            if case .space = k.def.action {
+                a.timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self, weak a] _ in
+                    guard let self, let a else { return }
+                    a.cursorMode = true
+                    a.cursorAnchorX = a.current.x
+                    self.setNeedsDisplay()
+                }
+            }
             active[t] = a
         }
         setNeedsDisplay()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        let stepPt: CGFloat = 2.2 * CGFloat(KeyboardSettings.ptPerMM)
         for t in touches {
-            active[t]?.current = t.location(in: self)
+            guard let a = active[t] else { continue }
+            let p = t.location(in: self)
+            a.current = p
+            if case .space = a.key.def.action, !a.cursorMode {
+                // 長押しを待たずに横へ大きく動かしたときも、カーソル移動にする
+                if abs(p.x - a.start.x) > stepPt * 1.5 {
+                    a.timer?.invalidate()
+                    a.cursorMode = true
+                    a.cursorAnchorX = a.start.x
+                }
+            }
+            if a.cursorMode {
+                let moved: CGFloat = p.x - a.cursorAnchorX
+                let steps = Int(moved / stepPt)
+                if steps != 0 {
+                    onCursor?(steps)
+                    a.cursorAnchorX += CGFloat(steps) * stepPt
+                }
+            }
         }
         setNeedsDisplay()
     }
@@ -231,7 +284,7 @@ final class KeyboardView: UIView {
         for t in touches {
             guard let a = active.removeValue(forKey: t) else { continue }
             a.timer?.invalidate()
-            if !a.repeated {
+            if !a.repeated && !a.cursorMode {
                 onKey?(a.key.def, direction(a.key, from: a.start, to: t.location(in: self)))
             }
         }

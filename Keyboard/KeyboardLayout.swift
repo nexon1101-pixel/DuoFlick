@@ -18,6 +18,7 @@ struct LayoutResult {
 
 enum KeyboardLayout {
     static func mm(_ v: Double) -> CGFloat { CGFloat(v * KeyboardSettings.ptPerMM) }
+    static let cornerRadius: CGFloat = 6
 
     private struct Raw {
         var def: KeyDef
@@ -157,7 +158,7 @@ enum KeyboardLayout {
 
     /// くさび形キーの輪郭。隙間が均一になるよう、半径ごとに角度の余白を変える。
     private static func sector(ri: CGFloat, ro: CGFloat, tr: CGFloat, tl: CGFloat, gap g: CGFloat) -> [CGPoint] {
-        let pad: CGFloat = 1.5   // 角を丸めるための線幅の半分
+        let pad: CGFloat = KeyboardLayout.cornerRadius   // 角を丸めるための線幅の半分
         let half: CGFloat = g / 2 + pad
         let rIn: CGFloat = ri + pad
         let rOut: CGFloat = ro - pad
@@ -201,11 +202,11 @@ enum KeyboardLayout {
                 for p in pts.dropFirst() { path.addLine(to: p) }
                 path.close()
                 path.lineJoinStyle = .round
-                path.lineWidth = 3
+                path.lineWidth = KeyboardLayout.cornerRadius * 2
             } else {
                 path = UIBezierPath(roundedRect: CGRect(x: pts[0].x, y: pts[0].y,
                                                         width: raw.size.width, height: raw.size.height),
-                                    cornerRadius: 6)
+                                    cornerRadius: KeyboardLayout.cornerRadius * 1.6)
             }
             return LaidKey(def: raw.def, path: path,
                            center: CGPoint(x: raw.center.x + dx, y: raw.center.y + dy),

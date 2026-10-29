@@ -5,14 +5,16 @@ final class KeyboardViewController: UIInputViewController {
     private let model = SettingsModel()
     private let keyboardView = KeyboardView()
     private var tuningHost: UIHostingController<TuningBar>?
+    private var emojiHost: UIHostingController<EmojiPanel>?
     private var heightConstraint: NSLayoutConstraint?
     private var keyboardTop: NSLayoutConstraint?
-    private let tuningHeight: CGFloat = 132
+    private let tuningHeight: CGFloat = 160
     private var lastWidth: CGFloat = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = Palette.background
+        // 背景はiOS標準のキーボード背景（角の丸い枠）をそのまま使う
+        view.backgroundColor = .clear
 
         keyboardView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(keyboardView)
@@ -32,6 +34,9 @@ final class KeyboardViewController: UIInputViewController {
 
         keyboardView.settings = model.settings
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
+        keyboardView.onCursor = { [weak self] steps in
+            self?.textDocumentProxy.adjustTextPosition(byCharacterOffset: steps)
+        }
         model.onChange = { [weak self] s in
             guard let self else { return }
             s.save()
@@ -78,10 +83,44 @@ final class KeyboardViewController: UIInputViewController {
             proxy.adjustTextPosition(byCharacterOffset: -1)
         case .cursorRight:
             proxy.adjustTextPosition(byCharacterOffset: 1)
+        case .emoji:
+            showEmoji(true)
         case .settings:
             toggleTuning()
         case .nextKeyboard:
             advanceToNextInputMode()
+        }
+    }
+
+    // MARK: - 絵文字
+
+    private func showEmoji(_ on: Bool) {
+        if on {
+            guard emojiHost == nil else { return }
+            let panel = EmojiPanel(
+                onInsert: { [weak self] e in self?.textDocumentProxy.insertText(e) },
+                onDelete: { [weak self] in self?.textDocumentProxy.deleteBackward() },
+                onClose: { [weak self] in self?.showEmoji(false) })
+            let host = UIHostingController(rootView: panel)
+            host.view.backgroundColor = .clear
+            host.view.translatesAutoresizingMaskIntoConstraints = false
+            addChild(host)
+            view.addSubview(host.view)
+            host.didMove(toParent: self)
+            NSLayoutConstraint.activate([
+                host.view.topAnchor.constraint(equalTo: keyboardView.topAnchor),
+                host.view.bottomAnchor.constraint(equalTo: keyboardView.bottomAnchor),
+                host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ])
+            keyboardView.isHidden = true
+            emojiHost = host
+        } else if let host = emojiHost {
+            host.willMove(toParent: nil)
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+            emojiHost = nil
+            keyboardView.isHidden = false
         }
     }
 
