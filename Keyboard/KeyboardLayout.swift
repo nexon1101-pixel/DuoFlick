@@ -35,7 +35,7 @@ enum KeyboardLayout {
         var width: CGFloat { maxX - minX }
     }
 
-    static func make(settings s: KeyboardSettings, width W: CGFloat) -> LayoutResult {
+    static func make(settings s: KeyboardSettings, width W: CGFloat, topInset: CGFloat = 0) -> LayoutResult {
         let avail = W - 2 * mm(s.marginMM)
         var fit: CGFloat = 1
         var built = build(s, W, fit)
@@ -46,7 +46,7 @@ enum KeyboardLayout {
                 built = build(s, W, fit)
             }
         }
-        return place(built, s, W, fit)
+        return place(built, s, W, fit, topInset)
     }
 
     private static func build(_ s: KeyboardSettings, _ W: CGFloat, _ fit: CGFloat) -> Built {
@@ -183,9 +183,9 @@ enum KeyboardLayout {
         return pts
     }
 
-    private static func place(_ b: Built, _ s: KeyboardSettings, _ W: CGFloat, _ fit: CGFloat) -> LayoutResult {
+    private static func place(_ b: Built, _ s: KeyboardSettings, _ W: CGFloat, _ fit: CGFloat, _ topInset: CGFloat) -> LayoutResult {
         let m: CGFloat = mm(s.marginMM)
-        let topPad: CGFloat = mm(1.5)
+        let topPad: CGFloat = mm(1.5) + topInset
         let dx: CGFloat
         if s.shape == .standard {
             dx = (W - b.width) / 2 - b.minX

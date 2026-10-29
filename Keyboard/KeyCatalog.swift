@@ -12,7 +12,6 @@ enum KeyAction {
     case newline
     case cursorLeft
     case cursorRight
-    case emoji
     case settings
     case nextKeyboard
 }
@@ -39,7 +38,7 @@ enum KeyCatalog {
 
     static let leftColumn: [KeyDef?] = [
         KeyDef(id: "cursorLeft", label: "◀", action: .cursorLeft),
-        KeyDef(id: "emoji", label: "😀", action: .emoji),
+        KeyDef(id: "cursorRight", label: "▶", action: .cursorRight),
         KeyDef(id: "settings", label: "⚙", action: .settings),
         KeyDef(id: "globe", label: "🌐", action: .nextKeyboard),
     ]

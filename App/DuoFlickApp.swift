@@ -30,6 +30,10 @@ struct ContentView: View {
                         .frame(minHeight: 160)
                     Button("入力欄を消去", role: .destructive) { text = "" }
                 }
+                Section("ライセンス") {
+                    Text("かな漢字変換に AzooKeyKanaKanjiConverter（MIT License, Copyright (c) 2023 Miwa / Ensan）と azooKey の辞書データ（Apache License 2.0）を使っています。")
+                        .font(.footnote)
+                }
             }
             .navigationTitle("DuoFlick")
         }

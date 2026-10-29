@@ -22,7 +22,7 @@ Mac も有料の Apple Developer Program も使わずに、次の流れで iPhon
 
 ## ビルドしてインストールする
 
-1. GitHub のこのリポジトリの「Actions」タブを開き、一番上の実行が緑のチェックになるまで待つ（5〜10分）
+1. GitHub のこのリポジトリの「Actions」タブを開き、左の「build」→ 右の「Run workflow」→「Run workflow」を押す。一番上の実行が緑のチェックになるまで待つ（初回は辞書の取得で10分前後）
 2. その実行を開き、下の「Artifacts」にある `DuoFlick-ipa` をダウンロードして展開する
 3. iPhone を USB で PC につなぎ、Sideloadly を開く
 4. `DuoFlick.ipa` を Sideloadly にドラッグし、Apple ID を入力して「Start」を押す
@@ -42,10 +42,15 @@ Mac も有料の Apple Developer Program も使わずに、次の流れで iPhon
 ## キーボードの操作
 
 - 空白キーを長押しして左右に動かすと、入力位置（カーソル）が動く
-- 😀 で絵文字の一覧に切り替わる。「あいう」で戻る
+- 入力したひらがなは上の帯に変換候補が出る。候補をタップで確定、空白キーで次の候補、改行で確定
+- 絵文字は 🌐 でiOSの絵文字キーボードに切り替える。変換候補にも絵文字が出る（例：わらう）
 - ⚙ の調整バーで「比べて決める」を押すと、AとBの2つの値を打ち比べて、選んだほうへ少しずつ絞り込める
 
 ## 今の段階でできないこと
 
-- 漢字への変換（次の段階で azooKey の変換エンジンを組み込む予定）
 - 英字・数字の入力
+
+## ライセンス
+
+- かな漢字変換：[AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter)（MIT License）
+- 辞書データ：[azooKey_dictionary_storage](https://github.com/ensan-hcl/azooKey_dictionary_storage)（Apache License 2.0）

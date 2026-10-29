@@ -1,8 +1,7 @@
 name: build
 
+# GitHub の Actions 画面で「Run workflow」を押したときだけビルドする
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -19,6 +18,7 @@ jobs:
 
       - name: Build (unsigned)
         run: |
+          xcodebuild -version
           set -o pipefail
           xcodebuild \
             -project DuoFlick.xcodeproj \
@@ -27,6 +27,8 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \

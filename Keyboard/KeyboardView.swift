@@ -29,6 +29,11 @@ final class KeyboardView: UIView {
         didSet { relayout() }
     }
     var onKey: ((KeyDef, FlickDirection) -> Void)?
+    /// 上に空けておく高さ（変換候補の帯の分）
+    var topInset: CGFloat = 0 {
+        didSet { if topInset != oldValue { relayout() } }
+    }
+    weak var guideView: GuideOverlayView?
     /// 空白キー長押し中の左右移動。負の値で左へ。
     var onCursor: ((Int) -> Void)?
 
@@ -64,7 +69,7 @@ final class KeyboardView: UIView {
     }
 
     func requiredHeight(for width: CGFloat) -> CGFloat {
-        KeyboardLayout.make(settings: settings, width: width).height
+        KeyboardLayout.make(settings: settings, width: width, topInset: topInset).height
     }
 
     override func layoutSubviews() {
@@ -80,7 +85,7 @@ final class KeyboardView: UIView {
     private func relayout() {
         layoutWidth = bounds.width
         guard layoutWidth > 0 else { return }
-        let result = KeyboardLayout.make(settings: settings, width: layoutWidth)
+        let result = KeyboardLayout.make(settings: settings, width: layoutWidth, topInset: topInset)
         keys = result.keys
         keysBottom = result.keysBottom
         setNeedsDisplay()
@@ -117,11 +122,18 @@ final class KeyboardView: UIView {
                      color: isPressed ? Palette.pressedText : Palette.text, in: ctx)
         }
 
+        updateGuides()
+    }
+
+    private func updateGuides() {
+        var list: [FlickGuide] = []
         for a in active.values {
             if case .kana(let chars) = a.key.def.action {
-                drawGuide(a.key, chars: chars, selected: direction(a.key, from: a.start, to: a.current), in: ctx)
+                list.append(FlickGuide(center: a.key.center, size: a.key.size, rotation: textRotation(a.key),
+                                       chars: chars, selected: direction(a.key, from: a.start, to: a.current)))
             }
         }
+        guideView?.guides = list
     }
 
     private func drawText(_ s: String, center: CGPoint, rotation: CGFloat, font: UIFont, color: UIColor, in ctx: CGContext) {
@@ -138,54 +150,11 @@ final class KeyboardView: UIView {
         settings.followFan ? k.rotation : 0
     }
 
-    /// 押している間、フリックで入る文字を十字に表示する
-    private func drawGuide(_ k: LaidKey, chars: [String], selected: FlickDirection, in ctx: CGContext) {
-        let w = k.size.width, h = k.size.height
-        let cells: [(FlickDirection, CGFloat, CGFloat)] = [(.tap, 0, 0), (.left, -1, 0), (.up, 0, -1), (.right, 1, 0), (.down, 0, 1)]
-        let font = UIFont.systemFont(ofSize: min(w, h) * 0.46, weight: .semibold)
-        // 十字全体（幅3キー×高さ3キー）がキーボードの枠に収まるよう、中心をずらす
-        let rot: CGFloat = textRotation(k)
-        let c: CGFloat = abs(cos(rot))
-        let s: CGFloat = abs(sin(rot))
-        let halfW: CGFloat = (1.5 * w) * c + (1.5 * h) * s
-        let halfH: CGFloat = (1.5 * w) * s + (1.5 * h) * c
-        let inset: CGFloat = 2
-        let minX: CGFloat = halfW + inset
-        let maxX: CGFloat = bounds.width - halfW - inset
-        let minY: CGFloat = halfH + inset
-        let maxY: CGFloat = bounds.height - halfH - inset
-        var gx: CGFloat = k.center.x
-        var gy: CGFloat = k.center.y
-        if minX <= maxX { gx = min(max(gx, minX), maxX) }
-        if minY <= maxY { gy = min(max(gy, minY), maxY) }
-        ctx.saveGState()
-        ctx.translateBy(x: gx, y: gy)
-        ctx.rotate(by: rot)
-        for (d, ox, oy) in cells {
-            let ch = chars[d.rawValue]
-            if ch.isEmpty { continue }
-            let rx: CGFloat = ox * w - w / 2 + 1
-            let ry: CGFloat = oy * h - h / 2 + 1
-            let r = CGRect(x: rx, y: ry, width: w - 2, height: h - 2)
-            let p = UIBezierPath(roundedRect: r, cornerRadius: KeyboardLayout.cornerRadius * 1.6)
-            (d == selected ? Palette.pressed : Palette.guide).setFill()
-            p.fill()
-            Palette.shadow.setStroke()
-            p.lineWidth = 0.5
-            p.stroke()
-            let attrs: [NSAttributedString.Key: Any] = [.font: font,
-                                                        .foregroundColor: d == selected ? Palette.pressedText : Palette.text]
-            let sz = (ch as NSString).size(withAttributes: attrs)
-            (ch as NSString).draw(at: CGPoint(x: r.midX - sz.width / 2, y: r.midY - sz.height / 2), withAttributes: attrs)
-        }
-        ctx.restoreGState()
-    }
-
     // MARK: - 判定
 
     /// 最下段より下は反応させない。キーの隙間は一番近いキーとして扱う。
     private func hit(_ p: CGPoint) -> LaidKey? {
-        if p.y > keysBottom { return nil }
+        if p.y > keysBottom || p.y < topInset { return nil }
         var best: LaidKey?
         var bestDistance = CGFloat.greatestFiniteMagnitude
         for k in keys {
