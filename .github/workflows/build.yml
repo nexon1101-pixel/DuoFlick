@@ -16,6 +16,15 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      # 前回のビルド結果（パッケージの取得と、変えていない部分のコンパイル）を使い回して、ビルド時間を短くする
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: deriv-${{ github.run_id }}
+          restore-keys: |
+            deriv-
+
       - name: Build (unsigned)
         run: |
           xcodebuild -version

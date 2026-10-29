@@ -210,7 +210,7 @@ final class KeyboardViewController: UIInputViewController {
         domainCandidates = []
         let expectedClose = pairClose
         pairClose = nil
-        // 変換待ち（読みに下線が出ている間）は、数字キーと、⌫・次候補・確定のキー以外は押せない（設定でオフにできる）
+        // 変換待ち（読みに下線が出ている間）は、ABC・地球儀・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
         if composingLocked, !isAllowedWhileComposing(def) { return }
         let proxy = textDocumentProxy
         // ⌫の右フリック：確定の取り消し（↺）
@@ -467,12 +467,12 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// 変換待ちの間も押せるキー：数字キー（と、そこから入れる数字）、⌫、空白（次候補）、改行（確定）
+    /// 変換待ちの間に止めるキー：入力を中断してしまう、ABC・地球儀・片手／両手・設定・記号面・貼り付けなどのキー。
+    /// かな・数字・⌫・空白（次候補）・改行（確定）・小゛゜など、読みを打ち続けるキーは止めない
     private func isAllowedWhileComposing(_ def: KeyDef) -> Bool {
-        if def.id.hasPrefix("digit") { return true }
         switch def.action {
-        case .numberPad, .delete, .space, .newline, .cursorRight, .undoCommit: return true
-        default: return false
+        case .modeSwitch, .nextKeyboard, .gripSwitch, .settings, .layer, .paste, .widthToggle: return false
+        default: return true
         }
     }
 

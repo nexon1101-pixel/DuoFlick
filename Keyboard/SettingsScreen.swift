@@ -169,7 +169,7 @@ struct SettingsScreen: View {
                 Toggle("打ち間違いの候補（試験的）", isOn: $model.settings.typoCorrection)
                 Toggle("内側画面の片手持ちをiOS標準の配置にする", isOn: $model.settings.iosLayout)
                 Toggle("両手持ちで、かなを左右に分ける（ピンチでも切り替え）", isOn: $model.settings.splitKana)
-                Toggle("変換待ちの間は数字・⌫・確定・次候補以外を止める", isOn: $model.settings.lockWhileComposing)
+                Toggle("変換待ちの間は、ABC・地球儀など入力を中断するキーを止める", isOn: $model.settings.lockWhileComposing)
                 Button {
                     actions.onResetOffset()
                     offset = actions.offsetText()

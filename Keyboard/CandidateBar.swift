@@ -36,6 +36,19 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
         expandButton.isHidden = true
         addSubview(expandButton)
+        // 下にフリックすると閉じられることを示す、つまみの形のバー
+        let grabber = UIView()
+        grabber.translatesAutoresizingMaskIntoConstraints = false
+        grabber.backgroundColor = Palette.text.withAlphaComponent(0.3)
+        grabber.layer.cornerRadius = 2
+        grabber.isUserInteractionEnabled = false
+        addSubview(grabber)
+        NSLayoutConstraint.activate([
+            grabber.centerXAnchor.constraint(equalTo: centerXAnchor),
+            grabber.topAnchor.constraint(equalTo: topAnchor, constant: 3),
+            grabber.widthAnchor.constraint(equalToConstant: 36),
+            grabber.heightAnchor.constraint(equalToConstant: 4),
+        ])
         NSLayoutConstraint.activate([
             expandButton.trailingAnchor.constraint(equalTo: trailingAnchor),
             expandButton.topAnchor.constraint(equalTo: topAnchor),
