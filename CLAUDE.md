@@ -95,6 +95,10 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - NEologd（Apache 2.0）も調べたが、人気の目安がなく、バンド名や人名が大量に混ざる（英字名だけで約10万語）ため入れていない
 - ライセンスは tools/SKK-LICENSE.md（主に GPL v2 以降）。製品名など英字・カタカナの語は SKK には少ないので、BuiltinWords に足すか、NEologd（Apache 2.0）から選ぶ
 
+## アプリの画面対応（v0.23.1）
+
+- Duo の内側画面で、アプリが「未対応」の互換表示（iPhone 用の枠）になっていた。TARGETED_DEVICE_FAMILY を「1,2」（iPhone と iPad）にし、向きも横を許可した。実機での確認待ち。直らなければ、起動画面（UILaunchScreen）と画面サイズの扱いを疑う
+
 ## 選んだ語の記憶（v0.23.0）
 
 - AzooKey の学習だけでは、一度選んだ語の順位が上がりにくかった。Composer が「読み → 選んだ語（新しい順、5つまで）」を UserDefaults（DuoFlick.chosen.v1）に持ち、いちばん上の候補と同じ読みの語があれば先頭に出す（prioritizeChosen）
