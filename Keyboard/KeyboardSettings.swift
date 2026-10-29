@@ -110,6 +110,27 @@ struct KeyboardSettings: Codable, Equatable {
         return base
     }
 
+    /// アプリ本体の設定画面から受け取った設定を、保存してある全部の設定（画面・持ち方ごと）に反映する
+    static func applyShared(_ p: SharedPrefs) {
+        for profile in [ScreenProfile.narrow, .wide] {
+            for grip in [Grip.one, .two] {
+                guard var s = stored(profile.storeKey(grip)) else { continue }
+                s.apply(p)
+                s.save(profile: profile, grip: grip)
+            }
+        }
+    }
+
+    mutating func apply(_ p: SharedPrefs) {
+        iosLayout = p.iosLayout
+        lockWhileComposing = p.lockWhileComposing
+        typoCorrection = p.typoCorrection
+        toggleTap = p.toggleTap
+        haptics = p.haptics
+        autoCorrect = p.autoCorrect
+        labelScale = p.labelScale
+    }
+
     private static func stored(_ key: String) -> KeyboardSettings? {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(KeyboardSettings.self, from: data)

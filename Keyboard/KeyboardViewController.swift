@@ -104,12 +104,24 @@ final class KeyboardViewController: UIInputViewController {
         haptic.prepare()
         // キーボードを開いている間にコピーされたものを、クリップボードの履歴に残す
         if hasFullAccess {
+            importAppSettings()
             clipboard.capture()
             clipboardTimer?.invalidate()
             clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
                 self?.clipboard.capture()
             }
         }
+    }
+
+    /// アプリ本体の設定画面からコピーされた設定があれば読み込む（読んだら、クリップボードの印の入った文字は消す）
+    private func importAppSettings() {
+        guard UIPasteboard.general.hasStrings, let text = UIPasteboard.general.string,
+              let prefs = SharedPrefs.decode(text) else { return }
+        UIPasteboard.general.string = ""
+        KeyboardSettings.applyShared(prefs)
+        var s = model.settings
+        s.apply(prefs)
+        model.settings = s
     }
 
     override func viewWillDisappear(_ animated: Bool) {

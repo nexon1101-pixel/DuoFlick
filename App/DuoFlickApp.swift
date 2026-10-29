@@ -25,6 +25,9 @@ struct ContentView: View {
                         }
                     }
                 }
+                Section("設定") {
+                    NavigationLink("設定を開く") { AppSettingsScreen() }
+                }
                 Section("試し打ち") {
                     TextEditor(text: $text)
                         .frame(minHeight: 160)

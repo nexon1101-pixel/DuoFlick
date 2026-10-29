@@ -10,14 +10,14 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: 0.19.3
-    CURRENT_PROJECT_VERSION: 45
+    MARKETING_VERSION: 0.20.0
+    CURRENT_PROJECT_VERSION: 46
     TARGETED_DEVICE_FAMILY: "1"
 targets:
   DuoFlick:
     type: application
     platform: iOS
-    sources: [App]
+    sources: [App, Shared]
     scheme: {}
     info:
       path: App/Info.plist
@@ -33,7 +33,7 @@ targets:
   DuoFlickKeyboard:
     type: app-extension
     platform: iOS
-    sources: [Keyboard]
+    sources: [Keyboard, Shared]
     dependencies:
       - package: AzooKeyKanaKanjiConverter
         product: KanaKanjiConverterModuleWithDefaultDictionary
