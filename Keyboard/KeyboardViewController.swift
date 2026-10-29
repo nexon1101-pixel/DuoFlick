@@ -185,8 +185,8 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         domainCandidates = []
-        // 候補を選んでいる間（変換待ち）は、数字キーと、⌫・次候補・確定のキー以外は押せない
-        if composer.selectedIndex != nil, !isAllowedWhileSelecting(def) { return }
+        // 変換待ち（読みに下線が出ている間）は、数字キーと、⌫・次候補・確定のキー以外は押せない（設定でオフにできる）
+        if composingLocked, !isAllowedWhileComposing(def) { return }
         let proxy = textDocumentProxy
         // ⌫の右フリック：確定の取り消し（↺）
         if case .delete = def.action, dir == .right {
@@ -224,8 +224,8 @@ final class KeyboardViewController: UIInputViewController {
                 composer.insert(s)
                 updateComposition()
             }
-        case .direct(let chars) where def.id.hasPrefix("digit") && !composer.isEmpty:
-            // 入力中の数字は、読みに足して変換を続ける（候補を選んでいたら先に確定する）
+        case .direct(let chars) where def.id.hasPrefix("digit") && !isNumericField:
+            // 数字も読みに足して変換する（全角・漢数字の候補が出る。候補を選んでいたら先に確定する）
             if composer.selectedIndex != nil { commitAll() }
             composer.insert(pick(chars, dir))
             updateComposition()
@@ -413,8 +413,18 @@ final class KeyboardViewController: UIInputViewController {
         return true
     }
 
-    /// 候補を選んでいる間も押せるキー：数字キー（と、そこから入れる数字）、⌫、空白（次候補）、改行（確定）
-    private func isAllowedWhileSelecting(_ def: KeyDef) -> Bool {
+    private var composingLocked: Bool { model.settings.lockWhileComposing && !composer.isEmpty }
+
+    /// 入力欄が数字用のキーボードを求めているか
+    private var isNumericField: Bool {
+        switch textDocumentProxy.keyboardType ?? .default {
+        case .numberPad, .phonePad, .decimalPad, .numbersAndPunctuation, .namePhonePad, .asciiCapableNumberPad: return true
+        default: return false
+        }
+    }
+
+    /// 変換待ちの間も押せるキー：数字キー（と、そこから入れる数字）、⌫、空白（次候補）、改行（確定）
+    private func isAllowedWhileComposing(_ def: KeyDef) -> Bool {
         if def.id.hasPrefix("digit") { return true }
         switch def.action {
         case .numberPad, .delete, .space, .newline: return true
@@ -657,8 +667,8 @@ final class KeyboardViewController: UIInputViewController {
                 disabled.insert("newline")
             }
         }
-        if composer.selectedIndex != nil {
-            for k in keyboardView.keys where !isAllowedWhileSelecting(k.def) { disabled.insert(k.def.id) }
+        if composingLocked {
+            for k in keyboardView.keys where !isAllowedWhileComposing(k.def) { disabled.insert(k.def.id) }
         }
         labels["width"] = japanese ? "あ" : "A"
         if mode != .kana { labels["space"] = composer.isEmpty ? (japanese ? "空白" : "space") : "次候補" }

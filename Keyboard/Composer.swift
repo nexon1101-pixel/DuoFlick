@@ -80,7 +80,7 @@ final class Composer {
             if let ci = candidateIndex(forDisplay: i) {
                 return candidates[ci].text + readingAfterSegment
             }
-            return extraText ?? composing.convertTarget
+            return extraText(forDisplay: i) ?? composing.convertTarget
         }
         return composing.convertTarget
     }
@@ -94,24 +94,67 @@ final class Composer {
     /// 打った英字そのまま。ローマ字だけで打ち、読みを区切っていないときだけ出す
     private var rawRoman = ""
     private var rawValid = true
-    private var extraText: String?
-    private static let extraPosition = 2
+    /// 変換エンジンの候補のあいだに入れる候補（打った英字、数字の全角・漢数字）と、入れる位置
+    private var extras: [String] = []
+    private var extraAt = 2
 
     private func withExtra(_ texts: [String]) -> [String] {
-        guard let e = extraText else { return texts }
+        guard !extras.isEmpty else { return texts }
         var t = texts
-        t.insert(e, at: min(Self.extraPosition, t.count))
+        t.insert(contentsOf: extras, at: min(extraAt, t.count))
         return t
     }
 
-    private var displayCount: Int { candidates.count + (extraText == nil ? 0 : 1) }
+    private var displayCount: Int { candidates.count + extras.count }
 
-    /// 帯の番号から変換候補の番号を求める（英字の候補なら nil）
+    /// 帯の番号から変換候補の番号を求める（入れた候補なら nil）
     private func candidateIndex(forDisplay i: Int) -> Int? {
-        guard extraText != nil else { return i }
-        let e = min(Self.extraPosition, candidates.count)
-        if i == e { return nil }
-        return i > e ? i - 1 : i
+        guard !extras.isEmpty else { return i }
+        let p = min(extraAt, candidates.count)
+        if i < p { return i }
+        if i < p + extras.count { return nil }
+        return i - extras.count
+    }
+
+    /// 帯の番号が、入れた候補のものならその文字
+    private func extraText(forDisplay i: Int) -> String? {
+        let p = min(extraAt, candidates.count)
+        guard i >= p, i - p < extras.count else { return nil }
+        return extras[i - p]
+    }
+
+    /// 数字だけの読みの、全角と漢数字の候補
+    private static func numberVariants(_ s: String) -> [String] {
+        var out: [String] = []
+        out.append(String(s.unicodeScalars.compactMap { UnicodeScalar($0.value + 0xFEE0) }.map { Character($0) }))
+        let digits = ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九"]
+        out.append(s.compactMap { Int(String($0)) }.map { digits[$0] }.joined())
+        if s.count <= 16, !(s.hasPrefix("0") && s.count > 1), let n = UInt64(s), n > 0 {
+            out.append(kanjiNumber(n))
+        }
+        return out
+    }
+
+    /// 位取りの漢数字（例：2024 → 二千二十四）
+    private static func kanjiNumber(_ n: UInt64) -> String {
+        let one = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"]
+        let small = ["", "十", "百", "千"]
+        let div = [1, 10, 100, 1000]
+        let big = ["", "万", "億", "兆", "京"]
+        var groups: [Int] = []
+        var x = n
+        while x > 0 { groups.append(Int(x % 10000)); x /= 10000 }
+        var result = ""
+        for gi in stride(from: groups.count - 1, through: 0, by: -1) where groups[gi] > 0 {
+            var part = ""
+            for pos in stride(from: 3, through: 0, by: -1) {
+                let d = (groups[gi] / div[pos]) % 10
+                if d == 0 { continue }
+                part += (d == 1 && pos > 0) ? small[pos] : one[d] + small[pos]
+            }
+            result += part + big[gi]
+        }
+        return result
     }
 
     /// 消したあとの読みに合う、打った英字の長さに合わせ直す
@@ -205,7 +248,7 @@ final class Composer {
         guard index < displayCount else { return nil }
         guard let ci = candidateIndex(forDisplay: index) else {
             // 打った英字のまま確定する
-            let text = extraText ?? composing.convertTarget
+            let text = extraText(forDisplay: index) ?? composing.convertTarget
             reset()
             return text
         }
@@ -281,7 +324,7 @@ final class Composer {
         selectedIndex = nil
         rawRoman = ""
         rawValid = true
-        extraText = nil
+        extras = []
     }
 
     /// 辞書が読めているかを確かめる（調整バーの「変換の診断」で表示）
@@ -356,7 +399,7 @@ final class Composer {
         needsRefresh = false
         guard !composing.isEmpty else {
             candidates = []
-            extraText = nil
+            extras = []
             if converterReady { converter.stopComposition() }
             return
         }
@@ -364,11 +407,18 @@ final class Composer {
         var requestOptions = options
         requestOptions.needTypoCorrection = typoCorrection
         candidates = converter.requestCandidates(target, options: requestOptions).mainResults
-        if rawValid, !isSegmented, !rawRoman.isEmpty, rawRoman.allSatisfy({ $0.isASCII }),
-           rawRoman != composing.convertTarget, !candidates.contains(where: { $0.text == rawRoman }) {
-            extraText = rawRoman
-        } else {
-            extraText = nil
+        extras = []
+        guard !isSegmented else { return }
+        let reading = composing.convertTarget
+        let have = Set(candidates.map(\.text))
+        if reading.allSatisfy({ $0.isASCII && $0.isNumber }) {
+            // 数字だけ：全角と漢数字を、先頭の候補のすぐあとに出す
+            extraAt = 1
+            for v in Self.numberVariants(reading) where !have.contains(v) && !extras.contains(v) { extras.append(v) }
+        } else if rawValid, !rawRoman.isEmpty, rawRoman.allSatisfy({ $0.isASCII }),
+                  rawRoman != reading, !have.contains(rawRoman) {
+            extraAt = 2
+            extras = [rawRoman]
         }
     }
 }

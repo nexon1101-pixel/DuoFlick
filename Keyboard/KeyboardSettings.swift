@@ -51,6 +51,8 @@ struct KeyboardSettings: Codable, Equatable {
     var toggleTap: Bool = false
     /// 打ち間違いを直した候補も出す（変換エンジンの機能）。初期はオフ
     var typoCorrection: Bool = false
+    /// 変換待ち（読みに下線が出ている間）は、数字・⌫・確定・次候補のキー以外を押せなくする
+    var lockWhileComposing: Bool = true
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape
@@ -81,6 +83,7 @@ struct KeyboardSettings: Codable, Equatable {
         autoCorrect = (try? c.decode(Bool.self, forKey: .autoCorrect)) ?? d.autoCorrect
         toggleTap = (try? c.decode(Bool.self, forKey: .toggleTap)) ?? d.toggleTap
         typoCorrection = (try? c.decode(Bool.self, forKey: .typoCorrection)) ?? d.typoCorrection
+        lockWhileComposing = (try? c.decode(Bool.self, forKey: .lockWhileComposing)) ?? d.lockWhileComposing
     }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。
