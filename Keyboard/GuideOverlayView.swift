@@ -82,26 +82,38 @@ final class GuideOverlayView: UIView {
         var gx: CGFloat = g.center.x
         var gy: CGFloat = g.center.y
         if !g.fixedPosition {
-            // 十字全体（幅3キー×高さ3キー）がビューの中に収まるよう、中心をずらす
-            let c: CGFloat = abs(cos(g.rotation))
-            let s: CGFloat = abs(sin(g.rotation))
-            let halfW: CGFloat = (1.5 * w) * c + (1.5 * h) * s
-            let halfH: CGFloat = (1.5 * w) * s + (1.5 * h) * c
             let inset: CGFloat = 2
-            let minX: CGFloat = halfW + inset
-            let maxX: CGFloat = bounds.width - halfW - inset
-            let minY: CGFloat = halfH + inset
-            let maxY: CGFloat = bounds.height - halfH - inset
             if g.rotation == 0 {
                 // 傾いていないキー（端のキーなど）は、十字全体をずらさず、はみ出す方向の候補だけを内側へ寄せる
                 // （全体をずらすと、指の位置と候補がずれて見える）
                 let lo: CGFloat = (w / 2 + inset - gx) / w
                 let hi: CGFloat = (bounds.width - w / 2 - inset - gx) / w
                 if lo <= hi { cells = cells.map { ($0.0, min(max($0.1, lo), hi), $0.2) } }
-            } else if minX <= maxX {
-                gx = min(max(gx, minX), maxX)
+                let halfH: CGFloat = 1.5 * h
+                let minY: CGFloat = halfH + inset
+                let maxY: CGFloat = bounds.height - halfH - inset
+                if minY <= maxY { gy = min(max(gy, minY), maxY) }
+            } else {
+                // 傾いたキー：実際に文字のある方向だけの外枠（回したあと）がビューに収まるよう、最小限だけずらす
+                var minOx: CGFloat = 0, maxOx: CGFloat = 0, minOy: CGFloat = 0, maxOy: CGFloat = 0
+                for (d, ox, oy) in cells where d != .tap && !g.chars[d.rawValue].isEmpty {
+                    minOx = min(minOx, ox); maxOx = max(maxOx, ox)
+                    minOy = min(minOy, oy); maxOy = max(maxOy, oy)
+                }
+                let corners: [CGPoint] = [
+                    CGPoint(x: (minOx - 0.5) * w, y: (minOy - 0.5) * h), CGPoint(x: (maxOx + 0.5) * w, y: (minOy - 0.5) * h),
+                    CGPoint(x: (minOx - 0.5) * w, y: (maxOy + 0.5) * h), CGPoint(x: (maxOx + 0.5) * w, y: (maxOy + 0.5) * h)
+                ]
+                let c = cos(g.rotation), sn = sin(g.rotation)
+                let xs = corners.map { $0.x * c - $0.y * sn }
+                let ys = corners.map { $0.x * sn + $0.y * c }
+                if let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max() {
+                    if gx + x0 < inset { gx = inset - x0 }
+                    if gx + x1 > bounds.width - inset { gx = bounds.width - inset - x1 }
+                    if gy + y0 < inset { gy = inset - y0 }
+                    if gy + y1 > bounds.height - inset { gy = bounds.height - inset - y1 }
+                }
             }
-            if minY <= maxY { gy = min(max(gy, minY), maxY) }
         }
 
         ctx.saveGState()
@@ -178,7 +190,9 @@ final class GuideOverlayView: UIView {
         // 文字は回さずに、矢印の太い部分の中央へ置く
         let m: CGFloat = (a + b) / 2
         let center = CGPoint(x: dx * m, y: dy * m)
-        let size: CGFloat = across * (ch.count > 1 ? 0.32 : 0.6)
+        // 長い文字は、吹き出しの枠からはみ出さないよう小さくする
+        let room: CGFloat = dx != 0 ? (b - a) * 0.92 : across * 0.92
+        let size: CGFloat = ch.count > 1 ? min(across * 0.32, room / CGFloat(ch.count)) : across * 0.6
         drawLabel(ch, in: CGRect(x: center.x - across / 2, y: center.y - across / 2, width: across, height: across),
                   size: size, color: Palette.text)
     }

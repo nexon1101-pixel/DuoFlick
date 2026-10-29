@@ -803,15 +803,24 @@ final class KeyboardViewController: UIInputViewController {
         guard let host = listHost else { return }
         // 状態はすぐ戻し（続けて開閉できるように）、見た目だけ上へスライドしながら消す
         listHost = nil
-        keyboardView.isHidden = false
-        middleHost?.view.isHidden = false
         host.willMove(toParent: nil)
-        UIView.animate(withDuration: 0.16, delay: 0, options: .curveEaseIn, animations: {
+        // 一覧の文字がキーと重ならないよう、先に一覧を消してから、キーを出す
+        UIView.animate(withDuration: 0.14, delay: 0, options: .curveEaseIn, animations: {
             host.view.alpha = 0
             host.view.transform = CGAffineTransform(translationX: 0, y: -24)
         }, completion: { _ in
             host.view.removeFromSuperview()
             host.removeFromParent()
+            // すぐ開き直されたときは、キーを出さない
+            guard self.listHost == nil else { return }
+            self.keyboardView.alpha = 0
+            self.middleHost?.view.alpha = 0
+            self.keyboardView.isHidden = false
+            self.middleHost?.view.isHidden = false
+            UIView.animate(withDuration: 0.12) {
+                self.keyboardView.alpha = 1
+                self.middleHost?.view.alpha = 1
+            }
         })
     }
 

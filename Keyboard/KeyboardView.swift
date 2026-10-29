@@ -117,6 +117,9 @@ final class KeyboardView: UIView {
     private var keysBottom: CGFloat = 0
     private var layoutWidth: CGFloat = 0
 
+    /// 改行・確定キーの上でこの秒数だけ止めると、キャンセルになる
+    private static let cancelHold: TimeInterval = 0.35
+
     private final class Active {
         let key: LaidKey
         let start: CGPoint
@@ -124,6 +127,9 @@ final class KeyboardView: UIView {
         var timer: Timer?
         var repeated = false
         var cursorMode = false
+        /// 改行・確定キーの上に指が来た時刻（少し止めたときだけキャンセルにする）
+        var cancelSince: Date?
+        var cancelTimer: Timer?
         var cursorAnchorX: CGFloat = 0
         var cursorAnchorY: CGFloat = 0
         /// 数字キー：0なら0〜4、1なら5〜9の枠を開いた
@@ -198,7 +204,8 @@ final class KeyboardView: UIView {
         let cancelHint = active.values.contains { a in
             if a.cursorMode || a.repeated || a.key.def.isNumberPad { return false }
             if case .newline = a.key.def.action { return false }
-            return direction(a.key, from: a.start, to: a.current) != .tap
+            guard let since = a.cancelSince else { return false }
+            return Date().timeIntervalSince(since) >= Self.cancelHold
         }
 
         for k in keys {
@@ -267,7 +274,7 @@ final class KeyboardView: UIView {
     private func guideChars(_ def: KeyDef) -> [String]? {
         if numberLocked, Self.numberKeyDigits[def.id] != nil { return nil }
         if case .nextKeyboard = def.action { return ["", "定型文", "設定", "履歴", "絵文字"] }
-        if case .delete = def.action { return ["", "行削除", "語削除", "", "確定取り消し"] }
+        if case .delete = def.action { return ["", "行削除", "語削除", "", "取り消し"] }
         guard let chars = def.flickChars, chars.filter({ !$0.isEmpty }).count > 1 else { return nil }
         return chars
     }
@@ -514,6 +521,7 @@ final class KeyboardView: UIView {
                     a.cursorMode = true
                     a.cursorAnchorX = a.current.x
                     a.cursorAnchorY = a.current.y
+                    self.startCursorEdgeRepeat(a)
                     self.setNeedsDisplay()
                 }
             }
@@ -523,6 +531,40 @@ final class KeyboardView: UIView {
         setNeedsDisplay()
     }
 
+    /// 改行・確定キーの上に指が来たら時刻を覚え、少し止めたら「取消」を出す
+    private func trackCancel(_ a: Active, _ p: CGPoint) {
+        var skip = a.cursorMode || a.repeated || a.key.def.isNumberPad
+        if case .newline = a.key.def.action { skip = true }
+        var over = false
+        if !skip, let k = hit(p), case .newline = k.def.action { over = true }
+        if over {
+            if a.cancelSince == nil {
+                a.cancelSince = Date()
+                a.cancelTimer?.invalidate()
+                a.cancelTimer = Timer.scheduledTimer(withTimeInterval: Self.cancelHold + 0.02, repeats: false) { [weak self] _ in
+                    self?.setNeedsDisplay()
+                }
+            }
+        } else if a.cancelSince != nil {
+            a.cancelSince = nil
+            a.cancelTimer?.invalidate()
+        }
+    }
+
+    /// 空白のカーソル移動：指が左右の端に近いあいだは、動かさなくても少しずつ進める（右端のキーでは右へ動かす場所がないため）
+    private func startCursorEdgeRepeat(_ a: Active) {
+        a.timer?.invalidate()
+        a.timer = Timer.scheduledTimer(withTimeInterval: 0.09, repeats: true) { [weak self, weak a] _ in
+            guard let self, let a, a.cursorMode else { return }
+            let edge: CGFloat = 36
+            if a.current.x > self.bounds.width - edge, a.current.x - a.start.x > 10 {
+                self.onCursor?(1)
+            } else if a.current.x < edge, a.start.x - a.current.x > 10 {
+                self.onCursor?(-1)
+            }
+        }
+    }
+
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         let stepPt: CGFloat = 2.2 * CGFloat(KeyboardSettings.ptPerMM)
         for t in touches {
@@ -530,6 +572,7 @@ final class KeyboardView: UIView {
             let p = t.location(in: self)
             a.current = p
             if a.key.def.isNumberPad { trackNumber(a, p) }
+            trackCancel(a, p)
             if a.key.def.flickChars != nil, !a.key.def.isNumberPad {
                 let d = direction(a.key, from: a.start, to: p)
                 if d != a.lastDir { a.lastDir = d; onFlickChange?() }
@@ -541,6 +584,7 @@ final class KeyboardView: UIView {
                     a.cursorMode = true
                     a.cursorAnchorX = a.start.x
                     a.cursorAnchorY = a.start.y
+                    startCursorEdgeRepeat(a)
                 }
             }
             if a.key.def.isDelete, !a.repeated {
@@ -571,6 +615,7 @@ final class KeyboardView: UIView {
         for t in touches {
             guard let a = active.removeValue(forKey: t) else { continue }
             a.timer?.invalidate()
+            a.cancelTimer?.invalidate()
             if a.key.def.isNumberPad {
                 // タップだけでは何も入れない。2回続けてタップすると数字を固定し、固定中にタップすると解除する
                 if a.numberStage == nil {
@@ -595,14 +640,11 @@ final class KeyboardView: UIView {
             }
             if !a.repeated && !a.cursorMode {
                 let end = t.location(in: self)
-                // フリックして改行・確定キーの上で離したら、キャンセル（何も入れない）
-                if let over = hit(end), case .newline = over.def.action {
-                    var startsOnNewline = false
-                    if case .newline = a.key.def.action { startsOnNewline = true }
-                    if !startsOnNewline {
-                        lastFlick = nil
-                        continue
-                    }
+                // フリックして改行・確定キーの上で少し止めてから離したら、キャンセル（何も入れない）
+                if let since = a.cancelSince, Date().timeIntervalSince(since) >= Self.cancelHold,
+                   let over = hit(end), case .newline = over.def.action {
+                    lastFlick = nil
+                    continue
                 }
                 let dir = direction(a.key, from: a.start, to: end)
                 if dir == .tap, a.key.def.isCharacter { learnOffset(a.start, a.key) }
@@ -621,7 +663,7 @@ final class KeyboardView: UIView {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches {
-            active.removeValue(forKey: t)?.timer?.invalidate()
+            if let a = active.removeValue(forKey: t) { a.timer?.invalidate(); a.cancelTimer?.invalidate() }
         }
         setNeedsDisplay()
     }
