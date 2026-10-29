@@ -34,6 +34,7 @@ final class Composer {
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return ConvertRequestOptions.withDefaultDictionary(
             N_best: 10,
+            needTypoCorrection: false,
             requireJapanesePrediction: true,
             requireEnglishPrediction: false,
             keyboardLanguage: .ja_JP,
@@ -218,11 +219,29 @@ final class Composer {
         var lines: [String] = []
         lines.append("辞書フォルダ：\(fm.fileExists(atPath: dict.path) ? "あり" : "なし")")
         lines.append("louds：\(loudsCount)個　charID：\(fm.fileExists(atPath: chid.path) ? "あり" : "なし")")
+        let chidText = (try? String(contentsOf: chid, encoding: .utf8)) ?? ""
+        lines.append("charID：\(chidText.count)文字　「キ」\(chidText.contains("キ") ? "あり" : "なし")")
+        let ki = louds.appendingPathComponent("キ.louds")
+        let kiSize = (try? Data(contentsOf: ki).count) ?? -1
+        lines.append("キ.louds：\(kiSize)バイト")
+
         var test = ComposingText()
         test.insertAtCursorPosition("きょう", inputStyle: .direct)
         let result = converter.requestCandidates(test, options: options).mainResults.prefix(5).map(\.text)
         converter.stopComposition()
-        lines.append("「きょう」の候補：\(result.joined(separator: " / "))")
+        lines.append("候補（補正なし）：\(result.joined(separator: " / "))")
+
+        var typoOptions = options
+        typoOptions.needTypoCorrection = true
+        let result2 = converter.requestCandidates(test, options: typoOptions).mainResults.prefix(5).map(\.text)
+        converter.stopComposition()
+        lines.append("候補（補正あり）：\(result2.joined(separator: " / "))")
+
+        // 辞書を直接引く
+        let store = DicdataStore(convertRequestOptions: options)
+        let nodes = store.lookupDicdata(composingText: test, surfaceRange: (startIndex: 0, endIndexRange: nil), needTypoCorrection: false)
+        let words = nodes.prefix(8).map { $0.data.word }
+        lines.append("辞書を直接：\(nodes.count)件 \(words.joined(separator: " "))")
         lines.append(dict.path)
         return lines.joined(separator: "\n")
     }
