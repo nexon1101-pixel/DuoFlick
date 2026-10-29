@@ -1,0 +1,37 @@
+import SwiftUI
+
+/// iOS標準の配置で、真ん中に出す変換候補の一覧（縦に並べて、細い線で区切る）
+final class PanelModel: ObservableObject {
+    @Published var items: [String] = []
+    @Published var selected: Int?
+}
+
+struct MiddlePanel: View {
+    @ObservedObject var model: PanelModel
+    let onSelect: (Int) -> Void
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(model.items.enumerated()), id: \.offset) { i, text in
+                    Button { onSelect(i) } label: {
+                        Text(text)
+                            .font(.system(size: 20))
+                            .lineLimit(1)
+                            .foregroundStyle(Color(uiColor: model.selected == i ? Palette.pressedText : Palette.text))
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .background(model.selected == i ? Color(uiColor: Palette.pressed) : Color.clear)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 0.5)
+                    }
+                }
+            }
+        }
+        .background(Color.gray.opacity(0.28))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}

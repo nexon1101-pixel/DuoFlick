@@ -138,6 +138,9 @@ final class KeyboardView: UIView {
 
     /// 両手持ちで、ピンチアウトしたらかなを左右に分け、ピンチインしたら元に戻す
     var onPinch: ((Bool) -> Void)?
+    /// 真ん中の候補の一覧を出す範囲（iOS標準の配置のときだけ）
+    private(set) var panelRect: CGRect?
+    var onPanelRect: ((CGRect?) -> Void)?
     @objc private func pinched(_ g: UIPinchGestureRecognizer) {
         guard g.state == .ended || g.state == .changed, mode == .kana else { return }
         if g.scale > 1.25 { g.state = .ended; onPinch?(true) }
@@ -167,6 +170,8 @@ final class KeyboardView: UIView {
         guard layoutWidth > 0 else { return }
         let result = KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: layoutWidth, topInset: topInset)
         keys = result.keys
+        panelRect = result.panelRect
+        onPanelRect?(result.panelRect)
         keysBottom = result.keysBottom
         setNeedsDisplay()
     }

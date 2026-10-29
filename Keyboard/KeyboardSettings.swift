@@ -55,6 +55,8 @@ struct KeyboardSettings: Codable, Equatable {
     var lockWhileComposing: Bool = true
     /// 両手持ちで、かなを左右に分けて同じものを並べる（ピンチアウトで分割、ピンチインで戻す）
     var splitKana: Bool = false
+    /// 内側画面の片手持ちを、iOS標準に合わせた配置（左に4キー、間に候補の一覧、右にかな）にする
+    var iosLayout: Bool = true
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape
@@ -87,6 +89,7 @@ struct KeyboardSettings: Codable, Equatable {
         typoCorrection = (try? c.decode(Bool.self, forKey: .typoCorrection)) ?? d.typoCorrection
         lockWhileComposing = (try? c.decode(Bool.self, forKey: .lockWhileComposing)) ?? d.lockWhileComposing
         splitKana = (try? c.decode(Bool.self, forKey: .splitKana)) ?? d.splitKana
+        iosLayout = (try? c.decode(Bool.self, forKey: .iosLayout)) ?? d.iosLayout
     }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。

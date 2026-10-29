@@ -35,6 +35,8 @@ enum KeyAction {
     case settings
     case nextKeyboard
     case paste            // クリップボードの文字をそのまま貼り付ける
+    case cursorRight      // カーソルを右へ（入力中は文節を右へ）
+    case undoCommit       // 確定の取り消し（↺）
 }
 
 struct KeyDef {
@@ -61,6 +63,8 @@ struct KeyDef {
         case .shift: return "shift"
         case .delete: return "delete.left"
         case .paste: return "doc.on.clipboard"
+        case .cursorRight: return "arrow.right"
+        case .undoCommit: return "arrow.counterclockwise"
         case .gripSwitch: return label == "片手" ? "iphone" : "ipad"
         default: return nil
         }
@@ -133,6 +137,24 @@ enum KeyCatalog {
 
     static func columns(_ mode: InputMode, grip: Grip) -> [[KeyDef?]] {
         [leftColumn(mode, grip: grip)] + kanaColumns + [functionColumn(mode)]
+    }
+
+    /// iOS標準に合わせた配置（内側画面の片手持ち）。左に4つのキー、間は候補の一覧、右にかなと⌫・空白・改行・123
+    static let iosWeights: [CGFloat] = [1, 3.4, 1, 1, 1, 1]
+    static func iosColumns(_ mode: InputMode, grip: Grip) -> [[KeyDef?]] {
+        let left: [KeyDef?] = [
+            KeyDef(id: "cursorR", label: "", action: .cursorRight),
+            KeyDef(id: "undo", label: "", action: .undoCommit),
+            KeyDef(id: "mode", label: mode.switchLabel, action: .modeSwitch),
+            KeyDef(id: "globe", label: "", action: .nextKeyboard),
+        ]
+        let fn: [KeyDef?] = [
+            KeyDef(id: "delete", label: "⌫", action: .delete),
+            KeyDef(id: "space", label: "空白", action: .space),
+            KeyDef(id: "newline", label: "改行", action: .newline),
+            KeyDef(id: "number", label: "123", action: .numberPad),
+        ]
+        return [left, [nil, nil, nil, nil]] + kanaColumns + [fn]
     }
 
     /// 両手持ち用：かなと⌫・空白・改行を左右に1組ずつ置き、真ん中を空ける。123・地球儀・ABC・両手のキーは右端に1列だけ

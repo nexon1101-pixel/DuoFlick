@@ -67,12 +67,23 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.guideView = guideView
         keyboardView.grip = model.grip
         keyboardView.settings = model.settings
+        keyboardView.onPanelRect = { [weak self] rect in self?.updateMiddlePanel(rect) }
         keyboardView.onPinch = { [weak self] split in
             guard let self else { return }
             // 片手持ちでピンチアウトしたら、両手持ちにして分割する
-            if split, self.model.grip == .one { self.commitAll(); self.model.toggleGrip() }
+            if split, self.model.grip == .one {
+                self.commitAll()
+                self.model.toggleGrip()
+                self.splitFromOne = true
+            }
             guard self.model.grip == .two, self.model.settings.splitKana != split else { return }
             self.model.settings.splitKana = split
+            // 片手持ちから分割したときは、ピンチインで片手持ちに戻す
+            if !split, self.splitFromOne {
+                self.splitFromOne = false
+                self.commitAll()
+                self.model.toggleGrip()
+            }
         }
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
         keyboardView.onPress = { [weak self] in
@@ -304,6 +315,10 @@ final class KeyboardViewController: UIInputViewController {
             japanese.toggle()
             shiftState = .off
             updateKeyLabels()
+        case .cursorRight:
+            cursorDrag(1)
+        case .undoCommit:
+            undoCommit()
         case .paste:
             if let text = UIPasteboard.general.string, !text.isEmpty {
                 commitAll()
@@ -456,7 +471,7 @@ final class KeyboardViewController: UIInputViewController {
     private func isAllowedWhileComposing(_ def: KeyDef) -> Bool {
         if def.id.hasPrefix("digit") { return true }
         switch def.action {
-        case .numberPad, .delete, .space, .newline: return true
+        case .numberPad, .delete, .space, .newline, .cursorRight, .undoCommit: return true
         default: return false
         }
     }
@@ -655,9 +670,14 @@ final class KeyboardViewController: UIInputViewController {
     private func refreshBar() {
         updateKeyLabels()
         if !composer.isEmpty {
-            candidateBar.show(composer.candidateTexts, selected: composer.selectedIndex)
+            showBar(composer.candidateTexts, selected: composer.selectedIndex)
         } else {
-            candidateBar.show(domainCandidates.isEmpty ? composer.predictionTexts : domainCandidates, selected: nil)
+            englishWords = domainCandidates.isEmpty ? currentEnglishCompletions() : []
+            if !englishWords.isEmpty {
+                showBar(englishWords, selected: nil)
+            } else {
+                showBar(domainCandidates.isEmpty ? composer.predictionTexts : domainCandidates, selected: nil)
+            }
             hideCandidateList()
         }
         let canExpand = !composer.isEmpty && !composer.candidateTexts.isEmpty
@@ -754,7 +774,72 @@ final class KeyboardViewController: UIInputViewController {
         "yahoo.com", "live.jp", "nifty.com", "ybb.ne.jp"
     ]
 
+    // MARK: - 真ん中の候補の一覧（iOS標準の配置）
+
+    private var splitFromOne = false
+    private let panelModel = PanelModel()
+    private var middleHost: UIHostingController<MiddlePanel>?
+
+    private func showBar(_ items: [String], selected: Int?) {
+        candidateBar.show(items, selected: selected)
+        panelModel.items = items
+        panelModel.selected = selected
+    }
+
+    private func updateMiddlePanel(_ rect: CGRect?) {
+        guard let rect else {
+            if let h = middleHost {
+                h.willMove(toParent: nil); h.view.removeFromSuperview(); h.removeFromParent()
+                middleHost = nil
+            }
+            return
+        }
+        if middleHost == nil {
+            let host = UIHostingController(rootView: MiddlePanel(model: panelModel) { [weak self] i in
+                self?.selectFromBar(i)
+            })
+            host.view.backgroundColor = .clear
+            addChild(host)
+            view.addSubview(host.view)
+            host.didMove(toParent: self)
+            middleHost = host
+        }
+        middleHost?.view.frame = rect
+        if let v = middleHost?.view { view.bringSubviewToFront(v) }
+    }
+
+    /// 英字の予測変換（iOS標準の英単語補完）。打ちかけの単語の候補
+    private var englishWords: [String] = []
+    private let textChecker = UITextChecker()
+    private static let wordTail = try? NSRegularExpression(pattern: "[A-Za-z']+$")
+
+    private func partialEnglishWord() -> String? {
+        guard mode == .qwerty, !japanese, let before = textDocumentProxy.documentContextBeforeInput,
+              let re = Self.wordTail else { return nil }
+        let ns = before as NSString
+        guard let m = re.firstMatch(in: before, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        return ns.substring(with: m.range)
+    }
+
+    private func currentEnglishCompletions() -> [String] {
+        guard let word = partialEnglishWord() else { return [] }
+        let range = NSRange(location: 0, length: (word as NSString).length)
+        let list = textChecker.completions(forPartialWordRange: range, in: word, language: "en_US") ?? []
+        return Array(list.filter { $0.lowercased() != word.lowercased() }.prefix(12))
+    }
+
     private func selectFromBar(_ index: Int) {
+        if composer.isEmpty, domainCandidates.isEmpty, !englishWords.isEmpty, index < englishWords.count,
+           let word = partialEnglishWord() {
+            // 打ちかけの単語を、選んだ単語に置き換えて空白を入れる
+            for _ in 0..<word.count { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(englishWords[index] + " ")
+            englishWords = []
+            lastCommit = nil
+            refreshBar()
+            updateShiftDisplay()
+            return
+        }
         if !composer.isEmpty {
             if composer.needsRefresh {
                 candidateWork?.cancel()

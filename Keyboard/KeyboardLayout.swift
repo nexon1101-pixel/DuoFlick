@@ -14,6 +14,8 @@ struct LayoutResult {
     var keysBottom: CGFloat
     var height: CGFloat
     var fit: CGFloat
+    /// 真ん中の候補の一覧を出す範囲（iOS標準の配置のときだけ）
+    var panelRect: CGRect? = nil
 }
 
 enum KeyboardLayout {
@@ -41,6 +43,7 @@ enum KeyboardLayout {
             // 英字・記号は、片手でも普通の横並びにする
             return place(qwerty(s, mode, W), s, W, 1, topInset, centered: true)
         }
+        if grip == .one && s.iosLayout && W > 480 { return iosLayout(s, W, topInset, grip) }
         let avail = W - 2 * mm(s.marginMM)
         var fit: CGFloat = 1
         var built = build(s, mode, grip, W, fit)
@@ -52,6 +55,39 @@ enum KeyboardLayout {
             }
         }
         return place(built, s, W, fit, topInset, centered: s.shape == .standard)
+    }
+
+    /// iOS標準に合わせた配置。左に4つのキー、間は候補の一覧、右にかなと⌫・空白・改行・123
+    private static func iosLayout(_ s: KeyboardSettings, _ W: CGFloat, _ topInset: CGFloat, _ grip: Grip) -> LayoutResult {
+        let cols = KeyCatalog.iosColumns(.kana, grip: grip)
+        let weights = KeyCatalog.iosWeights
+        let g: CGFloat = mm(s.gapMM)
+        let m: CGFloat = mm(s.marginMM)
+        let total: CGFloat = weights.reduce(0, +)
+        let unit: CGFloat = (W - 2 * m - CGFloat(cols.count - 1) * g) / total
+        let h: CGFloat = mm(s.keyHeightMM)
+        let top: CGFloat = mm(1.5) + topInset
+        var keys: [LaidKey] = []
+        var panel: CGRect?
+        var x: CGFloat = m
+        for (i, col) in cols.enumerated() {
+            let w: CGFloat = unit * weights[i]
+            if i == 1 {
+                panel = CGRect(x: x, y: top, width: w, height: 4 * h + 3 * g)
+            }
+            for (r, d) in col.enumerated() {
+                guard let def = d else { continue }
+                let rect = CGRect(x: x, y: top + CGFloat(r) * (h + g), width: w, height: h)
+                keys.append(LaidKey(def: def,
+                                    path: UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius * 1.6),
+                                    center: CGPoint(x: rect.midX, y: rect.midY), rotation: 0,
+                                    size: rect.size, isSector: false))
+            }
+            x += w + g
+        }
+        let bottom: CGFloat = top + 4 * h + 3 * g
+        return LayoutResult(keys: keys, keysBottom: bottom, height: ceil(bottom + mm(s.bottomMarginMM)),
+                            fit: 1, panelRect: panel)
     }
 
     /// 英字・記号の面。行ごとに幅の比率でキーを並べる（2段目の英字だけは1キー分の幅で中央に寄せる）
