@@ -96,7 +96,7 @@ final class Composer {
         // 文節を区切っていた場合も、入力は末尾に足す
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.insertAtCursorPosition(s, inputStyle: .direct)
-        refresh()
+        markDirty()
     }
 
     /// 直前の1文字を別の形（濁点・小書きなど）に置き換える。置き換えたら true。
@@ -106,7 +106,7 @@ final class Composer {
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.deleteBackwardFromCursorPosition(count: 1)
         composing.insertAtCursorPosition(s, inputStyle: .direct)
-        refresh()
+        markDirty()
         return true
     }
 
@@ -118,7 +118,7 @@ final class Composer {
         }
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.deleteBackwardFromCursorPosition(count: 1)
-        refresh()
+        markDirty()
     }
 
     /// 文節の区切り位置を動かす（空白キー長押しで左右）
@@ -131,12 +131,13 @@ final class Composer {
         }
         if moved != 0 {
             selectedIndex = nil
-            refresh()
+            markDirty()
         }
     }
 
     /// 空白キー：次の候補を選ぶ
     func selectNext() {
+        refreshIfNeeded()
         guard !candidates.isEmpty else { return }
         if let i = selectedIndex {
             selectedIndex = (i + 1) % candidates.count
@@ -252,7 +253,22 @@ final class Composer {
         converter.sendToDicdataStore(.closeKeyboard)
     }
 
+    /// 変換候補が今の読みに追いついていないか
+    private(set) var needsRefresh = false
+
+    /// 読みが変わったら、候補はいったん空にして後でまとめて変換する（打鍵のたびに変換すると重いため）
+    private func markDirty() {
+        candidates = []
+        needsRefresh = true
+    }
+
+    func refreshIfNeeded() {
+        guard needsRefresh else { return }
+        refresh()
+    }
+
     private func refresh() {
+        needsRefresh = false
         guard !composing.isEmpty else {
             candidates = []
             if converterReady { converter.stopComposition() }

@@ -339,6 +339,21 @@ final class KeyboardViewController: UIInputViewController {
             proxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
         }
         refreshBar()
+        scheduleCandidates()
+    }
+
+    /// 打鍵が続いている間は変換を待ち、指が止まったらまとめて変換する
+    private var candidateWork: DispatchWorkItem?
+    private func scheduleCandidates() {
+        candidateWork?.cancel()
+        guard composer.needsRefresh else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.composer.refreshIfNeeded()
+            self.refreshBar()
+        }
+        candidateWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
     }
 
     /// 入力中は変換候補、確定直後は予測、それ以外は何も出さない
@@ -352,6 +367,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func selectFromBar(_ index: Int) {
         if !composer.isEmpty {
+            guard !composer.needsRefresh else { return }
             commitCandidate(index)
         } else if let text = composer.choosePrediction(at: index) {
             textDocumentProxy.insertText(text)
