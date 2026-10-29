@@ -671,17 +671,22 @@ final class KeyboardViewController: UIInputViewController {
         updateKeyLabels()
         if !composer.isEmpty {
             pasteChip = false
+            imageChip = false
             showBar(composer.candidateTexts, selected: composer.selectedIndex)
         } else {
             pasteChip = false
+            imageChip = false
             englishWords = domainCandidates.isEmpty ? currentEnglishCompletions() : []
             if !englishWords.isEmpty {
                 showBar(englishWords, selected: nil)
             } else {
                 let items = domainCandidates.isEmpty ? composer.predictionTexts : domainCandidates
                 // 出す候補がなく、クリップボードに文字があるときは、貼り付けを出す
-                pasteChip = items.isEmpty && hasFullAccess && UIPasteboard.general.hasStrings
-                showBar(pasteChip ? ["貼り付け"] : items, selected: nil)
+                let canPaste = items.isEmpty && hasFullAccess
+                pasteChip = canPaste && UIPasteboard.general.hasStrings
+                // 画像はキーボードから入れられないので、入力欄を長押しして貼り付けてもらう
+                imageChip = canPaste && !pasteChip && UIPasteboard.general.hasImages
+                showBar(pasteChip ? ["貼り付け"] : (imageChip ? ["画像がコピーされています（入力欄を長押しで貼り付け）"] : items), selected: nil)
             }
             hideCandidateList()
         }
@@ -842,8 +847,10 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 候補の帯に「貼り付け」を出しているか
     private var pasteChip = false
+    private var imageChip = false
 
     private func selectFromBar(_ index: Int) {
+        if imageChip, composer.isEmpty { return }
         if pasteChip, composer.isEmpty {
             if let text = UIPasteboard.general.string, !text.isEmpty {
                 composer.clearPredictions()
