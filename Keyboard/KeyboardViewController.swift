@@ -76,6 +76,11 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
         candidateBar.onExpand = { [weak self] in self?.toggleCandidateList() }
+        candidateBar.onSwipeDown = { [weak self] in
+            // 帯を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
+            self?.commitAll()
+            self?.dismissKeyboard()
+        }
 
         composer.userWords = dictionary.words
         dictionary.onChange = { [weak self] in

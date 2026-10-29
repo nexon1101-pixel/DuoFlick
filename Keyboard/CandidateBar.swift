@@ -1,12 +1,14 @@
 import UIKit
 
 /// キーボード上部の変換候補の帯。横にスクロールできる。
-final class CandidateBar: UIView {
+final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     static let height: CGFloat = 44
 
     var onSelect: ((Int) -> Void)?
     /// 右端の∨／∧ボタン（候補の一覧を開く・閉じる）
     var onExpand: (() -> Void)?
+    /// 帯を下にフリックしたとき（キーボードを閉じる）
+    var onSwipeDown: (() -> Void)?
 
     private let scroll = UIScrollView()
     private let expandButton = UIButton(type: .system)
@@ -15,6 +17,11 @@ final class CandidateBar: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
+        let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swipedDown))
+        swipe.direction = .down
+        swipe.cancelsTouchesInView = true
+        swipe.delegate = self
+        addGestureRecognizer(swipe)
         scroll.showsHorizontalScrollIndicator = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scroll)
@@ -49,6 +56,12 @@ final class CandidateBar: UIView {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+
+    @objc private func swipedDown() { onSwipeDown?() }
+
+    // 横スクロールや候補のタップと一緒に判定する
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 
     /// 帯に並べる候補の上限（多すぎると重くなるため）
     static let maxItems = 30
