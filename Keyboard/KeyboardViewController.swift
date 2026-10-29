@@ -222,6 +222,11 @@ final class KeyboardViewController: UIInputViewController {
                 composer.insert(s)
                 updateComposition()
             }
+        case .direct(let chars) where def.id.hasPrefix("digit") && !composer.isEmpty:
+            // 入力中の数字は、読みに足して変換を続ける（候補を選んでいたら先に確定する）
+            if composer.selectedIndex != nil { commitAll() }
+            composer.insert(pick(chars, dir))
+            updateComposition()
         case .direct(let chars) where mode == .qwerty && japanese && isLetterKey(def):
             // ローマ字で入力中の読みに足す。大文字はそのまま英字として入れる
             let raw = pick(chars, dir)
