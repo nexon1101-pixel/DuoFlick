@@ -148,7 +148,7 @@ struct SettingsScreen: View {
             }
             Section("入力") {
                 Toggle("押したときの振動", isOn: $model.settings.haptics)
-                Toggle("続けてタップで文字を切り替え", isOn: $model.settings.toggleInput)
+                Toggle("続けてタップで文字を切り替え", isOn: $model.settings.toggleTap)
                 Toggle("ずれ補正", isOn: $model.settings.autoCorrect)
                 Button {
                     actions.onResetOffset()

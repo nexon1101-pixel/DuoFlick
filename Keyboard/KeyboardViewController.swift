@@ -190,11 +190,11 @@ final class KeyboardViewController: UIInputViewController {
 
         // 同じキーを続けてタップしたら、文字を切り替える
         if dir == .tap, let chars = def.flickChars, let t = toggle, t.def.id == def.id,
-           Date().timeIntervalSince(t.time) < 1.2, applyToggle(def, chars, step: 1) {
+           model.settings.toggleTap, Date().timeIntervalSince(t.time) < 1.2, applyToggle(def, chars, step: 1) {
             return
         }
         toggle = nil
-        if dir == .tap, model.settings.toggleInput, let chars = def.flickChars {
+        if dir == .tap, model.settings.toggleTap, let chars = def.flickChars {
             toggle = ToggleState(def: def, index: 0, time: Date(), output: chars[0])
         }
 
