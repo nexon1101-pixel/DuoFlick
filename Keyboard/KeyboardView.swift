@@ -39,7 +39,7 @@ enum Palette {
     /// 確定・検索などのキー（iOS標準と同じ青）
     static let accent = dynamic(0x007AFF, 0x0A84FF)
     static let shadow = dynamic(0x898A8D, 0x111214)
-    static let guide = dynamic(0xFFFFFF, 0x3A3B40)
+    static let guide = dynamic(0xFFFFFF, 0x77787D)
 }
 
 extension UIColor {
@@ -224,37 +224,61 @@ final class KeyboardView: UIView {
     /// 数字キーは右（左手のときは左）に寄せるほど親指が届きやすい
     private var numberMirrored: Bool { settings.shape != .standard && settings.hand == .left }
 
+    /// 数字の枠のマスの大きさ（キーより大きくして、選びやすくする）
+    private func numberCell(_ a: Active) -> CGSize {
+        let side: CGFloat = max(a.key.size.width, a.key.size.height) * 1.3
+        return CGSize(width: side, height: side)
+    }
+
     private func numberGuide(_ a: Active) -> FlickGuide {
         let side: CGFloat = numberMirrored ? -1 : 1
         if let stage = a.numberStage {
             let base = stage * 5
             let chars = (0..<5).map { String(base + $0) }
-            return FlickGuide(center: a.numberAnchor, size: a.key.size, rotation: 0, chars: chars,
-                              selected: numberDirection(from: a.numberAnchor, to: a.current))
+            return FlickGuide(center: a.numberAnchor, size: numberCell(a), rotation: 0, chars: chars,
+                              selected: numberChoice(a, at: a.current),
+                              keepCross: true, fixedPosition: true)
         }
         // まだ枠を選んでいない：右上に0〜4、右下に5〜9があることを示す
         return FlickGuide(center: a.key.center, size: a.key.size, rotation: 0,
                           chars: ["", "", "0〜4", "", "5〜9"], selected: .tap,
-                          offsets: [.zero, .zero, CGPoint(x: side, y: -1), .zero, CGPoint(x: side, y: 1)])
+                          offsets: [.zero, .zero, CGPoint(x: side, y: -1), .zero, CGPoint(x: side, y: 1)],
+                          keepCross: true)
     }
 
-    private func numberDirection(from s: CGPoint, to e: CGPoint) -> FlickDirection {
-        let dx: CGFloat = e.x - s.x
-        let dy: CGFloat = e.y - s.y
-        if hypot(dx, dy) / CGFloat(KeyboardSettings.ptPerMM) < CGFloat(settings.flickMinMM) { return .tap }
-        if abs(dx) > abs(dy) { return dx < 0 ? .left : .right }
-        return dy < 0 ? .up : .down
+    /// 開いた枠の中で、指がいちばん近いマスの数字を選ぶ
+    private func numberChoice(_ a: Active, at p: CGPoint) -> FlickDirection {
+        let cell = numberCell(a)
+        let marks: [(FlickDirection, CGFloat, CGFloat)] = [(.tap, 0, 0), (.left, -1, 0), (.up, 0, -1), (.right, 1, 0), (.down, 0, 1)]
+        var best: FlickDirection = .tap
+        var bestD = CGFloat.greatestFiniteMagnitude
+        for (d, ox, oy) in marks {
+            let cx: CGFloat = a.numberAnchor.x + ox * cell.width
+            let cy: CGFloat = a.numberAnchor.y + oy * cell.height
+            let dist: CGFloat = hypot(p.x - cx, p.y - cy)
+            if dist < bestD { bestD = dist; best = d }
+        }
+        return best
     }
 
-    /// 数字キーを指で動かしているとき：一定の距離を動いたら、上なら0〜4、下なら5〜9の枠を開く
+    /// 数字キーを斜めに動かしたとき：キーの大きさに比べて十分に動いたら、上なら0〜4、下なら5〜9の枠を、
+    /// 指の位置を中心に開く（枠が画面からはみ出す場合は内側にずらす）
     private func trackNumber(_ a: Active, _ p: CGPoint) {
         guard a.numberStage == nil else { return }
         let dx: CGFloat = p.x - a.start.x
         let dy: CGFloat = p.y - a.start.y
-        let moved: CGFloat = hypot(dx, dy) / CGFloat(KeyboardSettings.ptPerMM)
-        guard moved >= CGFloat(settings.flickMinMM) else { return }
+        let need: CGFloat = max(CGFloat(settings.flickMinMM) * CGFloat(KeyboardSettings.ptPerMM),
+                                min(a.key.size.width, a.key.size.height) * 0.7)
+        guard hypot(dx, dy) >= need else { return }
         a.numberStage = dy < 0 ? 0 : 1
-        a.numberAnchor = p
+        let cell = numberCell(a)
+        let halfW: CGFloat = cell.width * 1.5 + 2
+        let halfH: CGFloat = cell.height * 1.5 + 2
+        var x: CGFloat = p.x
+        var y: CGFloat = p.y
+        if bounds.width > halfW * 2 { x = min(max(x, halfW), bounds.width - halfW) }
+        if bounds.height > halfH * 2 { y = min(max(y, halfH), bounds.height - halfH) }
+        a.numberAnchor = CGPoint(x: x, y: y)
     }
 
     private func drawText(_ s: String, center: CGPoint, rotation: CGFloat, font: UIFont, color: UIColor, in ctx: CGContext) {
@@ -443,7 +467,7 @@ final class KeyboardView: UIView {
             if a.key.def.isNumberPad {
                 // タップだけでは何も入れない
                 if let stage = a.numberStage {
-                    let d = numberDirection(from: a.numberAnchor, to: t.location(in: self))
+                    let d = numberChoice(a, at: t.location(in: self))
                     let digit = String(stage * 5 + d.rawValue)
                     onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
                 }
