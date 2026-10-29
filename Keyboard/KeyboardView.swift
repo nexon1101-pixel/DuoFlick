@@ -258,7 +258,7 @@ final class KeyboardView: UIView {
     private func guideChars(_ def: KeyDef) -> [String]? {
         if numberLocked, Self.numberKeyDigits[def.id] != nil { return nil }
         if case .nextKeyboard = def.action { return ["", "定型文", "設定", "履歴", "絵文字"] }
-        if case .delete = def.action { return ["", "行削除", "語削除", "取り消し", "元に戻す"] }
+        if case .delete = def.action { return ["", "行削除", "語削除", "", "元に戻す"] }
         guard let chars = def.flickChars, chars.filter({ !$0.isEmpty }).count > 1 else { return nil }
         return chars
     }

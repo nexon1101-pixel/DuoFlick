@@ -217,15 +217,6 @@ final class KeyboardViewController: UIInputViewController {
         // 変換待ち（読みに下線が出ている間）は、ABC・地球儀・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
         if composingLocked, !isAllowedWhileComposing(def) { return }
         let proxy = textDocumentProxy
-        // ⌫の右フリック：確定の取り消し（↺）
-        if case .delete = def.action, dir == .right {
-            // 続けてタップの途中なら、ひとつ前の文字に戻す（iOS標準の↺と同じ）
-            if let t = toggle, let chars = t.def.flickChars, applyToggle(t.def, chars, step: -1) {
-                return
-            }
-            undoCommit()
-            return
-        }
         if case .newline = def.action, keyboardView.disabledIDs.contains(def.id) { return }
         lastCommit = nil
 
