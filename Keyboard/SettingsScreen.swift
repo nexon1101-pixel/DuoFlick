@@ -62,6 +62,12 @@ struct SettingsActions {
     let onResetOffset: () -> Void
     /// iOSのユーザ辞書を取り込む。終わったら結果の文を渡す
     let importSystemDictionary: (@escaping (String) -> Void) -> Void
+    /// バックアップを書き出す（共有画面を出す）。結果の文を返す
+    let onBackup: () -> String
+    /// クリップボードのバックアップから戻す。結果の文を返す
+    let onRestore: () -> String
+    /// 覚えた変換を消す
+    let onResetLearning: () -> Void
 }
 
 /// 地球儀キーの上フリックで開く設定画面。キーボードの場所いっぱいに一覧で出す。
@@ -76,6 +82,8 @@ struct SettingsScreen: View {
     @State private var confirmReset = false
     @State private var offset = ""
     @State private var importMessage = ""
+    @State private var backupMessage = ""
+    @State private var confirmLearning = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -207,6 +215,36 @@ struct SettingsScreen: View {
                 row("変換の診断", detail: nil) {
                     diagnosis = actions.diagnose()
                     page = .diagnosis
+                }
+                Button {
+                    backupMessage = actions.onBackup()
+                } label: {
+                    HStack {
+                        Text("バックアップを書き出す")
+                        Spacer()
+                    }
+                }
+                Button {
+                    backupMessage = actions.onRestore()
+                } label: {
+                    HStack {
+                        Text("クリップボードのバックアップから戻す")
+                        Spacer()
+                    }
+                }
+                if !backupMessage.isEmpty {
+                    Text(backupMessage).font(.footnote).foregroundStyle(.secondary)
+                }
+                Button(role: .destructive) {
+                    if confirmLearning {
+                        actions.onResetLearning()
+                        confirmLearning = false
+                        backupMessage = "覚えた変換を消しました"
+                    } else {
+                        confirmLearning = true
+                    }
+                } label: {
+                    Text(confirmLearning ? "もう一度押すと、覚えた変換を消します" : "覚えた変換を消す")
                 }
                 Button(role: .destructive) {
                     if confirmReset {

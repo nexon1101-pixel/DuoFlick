@@ -1102,6 +1102,30 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 重ねる画面
 
+    /// バックアップをファイルにして共有画面を出す（「ファイルに保存」で残せる）。クリップボードにも入れる
+    private func exportBackup() -> String {
+        guard let json = Backup.makeJSON() else { return "バックアップを作れませんでした" }
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd-HHmm"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("DuoFlick-backup-\(f.string(from: Date())).json")
+        do { try json.write(to: url, atomically: true, encoding: .utf8) } catch { return "ファイルを書き出せませんでした" }
+        if hasFullAccess { UIPasteboard.general.string = json }
+        let share = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        share.popoverPresentationController?.sourceView = view
+        share.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        present(share, animated: true)
+        return hasFullAccess ? "共有画面を出しました。クリップボードにも入れました" : "共有画面を出しました"
+    }
+
+    /// クリップボードにあるバックアップを戻す
+    private func restoreBackup() -> String {
+        guard hasFullAccess else { return "フルアクセスが必要です" }
+        guard let text = UIPasteboard.general.string, let n = Backup.restore(from: text) else {
+            return "クリップボードにバックアップがありません"
+        }
+        return "\(n)項目を戻しました。キーボードを開き直すと反映されます"
+    }
+
     private func showSettings() {
         hideTop()
         let actions = SettingsActions(
@@ -1128,7 +1152,10 @@ final class KeyboardViewController: UIInputViewController {
                         done(n > 0 ? "\(n)語を取り込みました" : "取り込める語がありませんでした")
                     }
                 }
-            })
+            },
+            onBackup: { [weak self] in self?.exportBackup() ?? "" },
+            onRestore: { [weak self] in self?.restoreBackup() ?? "" },
+            onResetLearning: { [weak self] in self?.composer.resetLearning() })
         showPanel(SettingsScreen(model: model, dictionary: dictionary, actions: actions))
     }
 

@@ -379,6 +379,33 @@ final class Composer {
         return lines.joined(separator: "\n")
     }
 
+    /// 「きょう」「いま」で出す日付・時刻
+    private static func dateTimeCandidates(for reading: String) -> [String] {
+        let now = Date()
+        func format(_ pattern: String) -> String {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "ja_JP")
+            f.calendar = Calendar(identifier: .gregorian)
+            f.dateFormat = pattern
+            return f.string(from: now)
+        }
+        if reading == "きょう" {
+            return [format("yyyy年M月d日"), format("M月d日（E）")]
+        }
+        return [format("HH:mm"), format("H時m分")]
+    }
+
+    /// 覚えた変換（エンジンの学習と、選んだ語の記憶）を消す。設定・登録単語・定型文は消さない
+    func resetLearning() {
+        saveTask?.cancel()
+        chosen = [:]
+        UserDefaults.standard.removeObject(forKey: Self.chosenKey)
+        var o = options
+        o.shouldResetMemory = true
+        converter.sendToDicdataStore(.setRequestOptions(o))
+        converter.sendToDicdataStore(.setRequestOptions(options))
+    }
+
     /// 学習内容を保存する（キーボードを閉じるとき、と確定の3秒後）
     func save() {
         saveTask?.cancel()
@@ -474,7 +501,11 @@ final class Composer {
         guard !isSegmented else { return }
         let reading = composing.convertTarget
         let have = Set(candidates.map(\.text))
-        if reading.count == 1, let c = reading.first, let list = Self.punctuationVariants[c] {
+        if reading == "きょう" || reading == "いま" {
+            // 今日の日付と今の時刻（変換エンジンの候補にない形だけ足す）
+            extraAt = 1
+            for v in Self.dateTimeCandidates(for: reading) where !have.contains(v) { extras.append(v) }
+        } else if reading.count == 1, let c = reading.first, let list = Self.punctuationVariants[c] {
             extraAt = 1
             for v in list where !have.contains(v) { extras.append(v) }
         } else if reading.allSatisfy({ $0.isASCII && $0.isNumber }) {
