@@ -53,7 +53,15 @@ final class CandidateBar: UIView {
     /// 帯に並べる候補の上限（多すぎると重くなるため）
     static let maxItems = 30
 
+    private var shownItems: [String] = []
+    private var shownSelected: Int?
+
     func show(_ items: [String], selected: Int?) {
+        let list = Array(items.prefix(Self.maxItems))
+        // 同じ内容なら作り直さない（ちらつきと無駄な処理を防ぐ）
+        if list == shownItems && selected == shownSelected { return }
+        shownItems = list
+        shownSelected = selected
         for v in stack.arrangedSubviews {
             stack.removeArrangedSubview(v)
             v.removeFromSuperview()

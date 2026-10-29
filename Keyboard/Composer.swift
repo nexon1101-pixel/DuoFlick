@@ -269,10 +269,18 @@ final class Composer {
     /// 変換候補が今の読みに追いついていないか
     private(set) var needsRefresh = false
 
-    /// 読みが変わったら、候補はいったん空にして後でまとめて変換する（打鍵のたびに変換すると重いため）
+    /// 読みが変わったら、後でまとめて変換する（打鍵のたびに変換すると重いため）。
+    /// 変換が終わるまでは前の候補を出したままにして、帯がちらつかないようにする。
     private func markDirty() {
-        candidates = []
         needsRefresh = true
+    }
+
+    /// 古い候補を押したとき：変換し直して、同じ文字の候補があればその番号を返す
+    func freshIndex(forStale index: Int) -> Int? {
+        guard index < candidates.count else { return nil }
+        let text = candidates[index].text
+        refreshIfNeeded()
+        return candidates.firstIndex { $0.text == text }
     }
 
     func refreshIfNeeded() {

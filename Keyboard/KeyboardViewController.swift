@@ -464,8 +464,13 @@ final class KeyboardViewController: UIInputViewController {
 
     private func selectFromBar(_ index: Int) {
         if !composer.isEmpty {
-            guard !composer.needsRefresh else { return }
-            commitCandidate(index)
+            if composer.needsRefresh {
+                candidateWork?.cancel()
+                guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
+                commitCandidate(fresh)
+            } else {
+                commitCandidate(index)
+            }
         } else if let text = composer.choosePrediction(at: index) {
             textDocumentProxy.insertText(text)
             lastCommit = nil
