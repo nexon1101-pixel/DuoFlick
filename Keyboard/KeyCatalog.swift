@@ -57,6 +57,12 @@ struct KeyDef {
     /// 文字を入れるキー（明るい色で描く）
     var isCharacter: Bool { flickChars != nil }
 
+    /// 文字の代わりに描く記号（SF Symbols の名前）
+    var symbol: String? {
+        if case .nextKeyboard = action { return "globe" }
+        return nil
+    }
+
     var isDelete: Bool {
         if case .delete = action { return true }
         return false
@@ -91,7 +97,7 @@ enum KeyCatalog {
             KeyDef(id: "undo", label: "↺", action: .undo),
             KeyDef(id: "settings", label: "⚙", action: .settings),
             KeyDef(id: "mode", label: mode.switchLabel, action: .modeSwitch),
-            KeyDef(id: "globe", label: "🌐", action: .nextKeyboard),
+            KeyDef(id: "globe", label: "", action: .nextKeyboard),
         ]
     }
 

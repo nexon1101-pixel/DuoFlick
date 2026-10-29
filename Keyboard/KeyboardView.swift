@@ -156,8 +156,13 @@ final class KeyboardView: UIView {
             let font = UIFont.systemFont(ofSize: m * ratio * CGFloat(settings.labelScale), weight: .regular)
             var label = k.def.label
             if cursorMode, case .space = k.def.action { label = "◀ ▲▼ ▶" }
-            drawText(label, center: k.center, rotation: textRotation(k), font: font,
-                     color: isPressed ? Palette.pressedText : Palette.text, in: ctx)
+            let color = isPressed ? Palette.pressedText : Palette.text
+            if let symbol = k.def.symbol {
+                drawSymbol(symbol, center: k.center, rotation: textRotation(k),
+                           pointSize: m * 0.36 * CGFloat(settings.labelScale), color: color, in: ctx)
+            } else {
+                drawText(label, center: k.center, rotation: textRotation(k), font: font, color: color, in: ctx)
+            }
         }
 
         updateGuides()
@@ -181,6 +186,19 @@ final class KeyboardView: UIView {
         ctx.translateBy(x: center.x, y: center.y)
         ctx.rotate(by: rotation)
         (s as NSString).draw(at: CGPoint(x: -size.width / 2, y: -size.height / 2), withAttributes: attrs)
+        ctx.restoreGState()
+    }
+
+    /// iOS標準と同じ、単色の記号（地球儀など）を描く
+    private func drawSymbol(_ name: String, center: CGPoint, rotation: CGFloat, pointSize: CGFloat, color: UIColor, in ctx: CGContext) {
+        let config = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+        guard let image = UIImage(systemName: name, withConfiguration: config)?
+            .withTintColor(color, renderingMode: .alwaysOriginal) else { return }
+        let size = image.size
+        ctx.saveGState()
+        ctx.translateBy(x: center.x, y: center.y)
+        ctx.rotate(by: rotation)
+        image.draw(in: CGRect(x: -size.width / 2, y: -size.height / 2, width: size.width, height: size.height))
         ctx.restoreGState()
     }
 

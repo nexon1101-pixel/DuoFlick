@@ -23,7 +23,7 @@ final class KeyboardViewController: UIInputViewController {
     /// キーボードの上に重ねて出す画面（調整バー・単語登録）
     private var topHost: UIViewController?
     private var topHeight: CGFloat = 0
-    private let tuningHeight: CGFloat = 160
+    private let adjustHeight: CGFloat = 92
     private let registerHeight: CGFloat = 112
     private var register: RegisterModel?
 
@@ -253,7 +253,10 @@ final class KeyboardViewController: UIInputViewController {
             switch dir {
             case .up: showPhrases()
             case .right: showClipboard()
-            default: showTuning(topHost == nil)
+            default:
+                if topHost != nil { hideTop() }
+                else if panelHost != nil { hidePanel() }
+                else { showSettings() }
             }
         case .nextKeyboard:
             commitAll()
@@ -535,7 +538,7 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 定型文・クリップボード
 
-    private var panelHost: UIHostingController<TextListPanel>?
+    private var panelHost: UIViewController?
 
     private func showPhrases() {
         let panel = TextListPanel(
@@ -585,7 +588,7 @@ final class KeyboardViewController: UIInputViewController {
         refreshBar()
     }
 
-    private func showPanel(_ panel: TextListPanel) {
+    private func showPanel<V: View>(_ panel: V) {
         hidePanel()
         hideCandidateList()
         let host = UIHostingController(rootView: panel)
@@ -658,29 +661,35 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 重ねる画面
 
-    private func showTuning(_ on: Bool) {
-        guard on else { hideTop(); return }
-        let bar = TuningBar(
-            model: model,
-            dictionary: dictionary,
-            onClose: { [weak self] in self?.hideTop() },
+    private func showSettings() {
+        hideTop()
+        let actions = SettingsActions(
+            onClose: { [weak self] in self?.hidePanel() },
+            onAdjust: { [weak self] in self?.showAdjust() },
+            onOptimize: { [weak self] in
+                self?.hidePanel()
+                self?.startOptimizing()
+            },
             onRegister: { [weak self] in
-                self?.hideTop()
+                self?.hidePanel()
                 self?.startRegister()
             },
+            onPhrases: { [weak self] in self?.showPhrases() },
+            onClipboard: { [weak self] in self?.showClipboard() },
             diagnose: { [weak self] in self?.composer.diagnostics() ?? "" },
-            onPhrases: { [weak self] in
-                self?.hideTop()
-                self?.showPhrases()
-            },
-            onClipboard: { [weak self] in
-                self?.hideTop()
-                self?.showClipboard()
-            },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
-            onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
-            onOptimize: { [weak self] in self?.startOptimizing() })
-        showTop(UIHostingController(rootView: bar), height: tuningHeight)
+            onResetOffset: { [weak self] in self?.keyboardView.resetOffset() })
+        showPanel(SettingsScreen(model: model, dictionary: dictionary, actions: actions))
+    }
+
+    /// キーを見ながら大きさを変える帯を出す
+    private func showAdjust() {
+        hidePanel()
+        let bar = AdjustBar(
+            model: model,
+            onBack: { [weak self] in self?.showSettings() },
+            onClose: { [weak self] in self?.hideTop() })
+        showTop(UIHostingController(rootView: bar), height: adjustHeight)
     }
 
     private func showTop(_ host: UIViewController, height: CGFloat) {
