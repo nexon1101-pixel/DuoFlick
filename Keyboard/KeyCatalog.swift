@@ -37,6 +37,7 @@ enum KeyAction {
     case paste            // クリップボードの文字をそのまま貼り付ける
     case cursorRight      // カーソルを右へ（入力中は文節を右へ）
     case undoCommit       // 確定の取り消し（↺）
+    case splitKeys        // かなを左右に分ける（両手持ちの分割）
 }
 
 struct KeyDef {
@@ -65,6 +66,7 @@ struct KeyDef {
         case .paste: return "doc.on.clipboard"
         case .cursorRight: return "arrow.right"
         case .undoCommit: return "arrow.counterclockwise"
+        case .splitKeys: return "rectangle.split.2x1"
         case .gripSwitch: return label == "片手" ? "iphone" : "ipad"
         default: return nil
         }
@@ -145,6 +147,7 @@ enum KeyCatalog {
         let left: [KeyDef?] = [
             KeyDef(id: "cursorR", label: "", action: .cursorRight),
             KeyDef(id: "undo", label: "", action: .undoCommit),
+            KeyDef(id: "split", label: "", action: .splitKeys),
             KeyDef(id: "mode", label: mode.switchLabel, action: .modeSwitch),
             KeyDef(id: "globe", label: "", action: .nextKeyboard),
         ]

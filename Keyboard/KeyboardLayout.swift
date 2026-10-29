@@ -80,9 +80,12 @@ enum KeyboardLayout {
             if i == 1 {
                 panel = CGRect(x: x, y: top, width: w, height: 4 * h + 3 * g)
             }
+            // 左の列は5キー（分割のキーが入る）。ほかの列と同じ高さに収まるよう、1キーを低くする
+            let rows: CGFloat = CGFloat(max(col.count, 1))
+            let kh: CGFloat = (4 * h + 3 * g - (rows - 1) * g) / rows
             for (r, d) in col.enumerated() {
                 guard let def = d else { continue }
-                let rect = CGRect(x: x, y: top + CGFloat(r) * (h + g), width: w, height: h)
+                let rect = CGRect(x: x, y: top + CGFloat(r) * (kh + g), width: w, height: kh)
                 keys.append(LaidKey(def: def,
                                     path: UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius * 1.6),
                                     center: CGPoint(x: rect.midX, y: rect.midY), rotation: 0,

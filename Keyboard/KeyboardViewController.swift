@@ -68,23 +68,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.grip = model.grip
         keyboardView.settings = model.settings
         keyboardView.onPanelRect = { [weak self] rect in self?.updateMiddlePanel(rect) }
-        keyboardView.onPinch = { [weak self] split in
-            guard let self else { return }
-            // 片手持ちでピンチアウトしたら、両手持ちにして分割する
-            if split, self.model.grip == .one {
-                self.commitAll()
-                self.model.toggleGrip()
-                self.splitFromOne = true
-            }
-            guard self.model.grip == .two, self.model.settings.splitKana != split else { return }
-            self.model.settings.splitKana = split
-            // 片手持ちから分割したときは、ピンチインで片手持ちに戻す
-            if !split, self.splitFromOne {
-                self.splitFromOne = false
-                self.commitAll()
-                self.model.toggleGrip()
-            }
-        }
+        keyboardView.onPinch = { [weak self] split in self?.setSplit(split) }
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
         keyboardView.onPress = { [weak self] in
             guard let self, self.model.settings.haptics, self.hasFullAccess else { return }
@@ -315,6 +299,8 @@ final class KeyboardViewController: UIInputViewController {
             japanese.toggle()
             shiftState = .off
             updateKeyLabels()
+        case .splitKeys:
+            setSplit(true)
         case .cursorRight:
             cursorDrag(1)
         case .undoCommit:
@@ -471,7 +457,7 @@ final class KeyboardViewController: UIInputViewController {
     /// かな・数字・⌫・空白（次候補）・改行（確定）・小゛゜など、読みを打ち続けるキーは止めない
     private func isAllowedWhileComposing(_ def: KeyDef) -> Bool {
         switch def.action {
-        case .modeSwitch, .nextKeyboard, .gripSwitch, .settings, .layer, .paste, .widthToggle: return false
+        case .modeSwitch, .nextKeyboard, .gripSwitch, .settings, .layer, .paste, .widthToggle, .splitKeys: return false
         default: return true
         }
     }
@@ -792,6 +778,23 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - 真ん中の候補の一覧（iOS標準の配置）
 
     private var splitFromOne = false
+
+    /// かなの分割をオン・オフする（ピンチと、分割のキーから）。片手持ちからは両手持ちに切り替えて分割する
+    private func setSplit(_ split: Bool) {
+        if split, model.grip == .one {
+            commitAll()
+            model.toggleGrip()
+            splitFromOne = true
+        }
+        guard model.grip == .two, model.settings.splitKana != split else { return }
+        model.settings.splitKana = split
+        // 片手持ちから分割したときは、ピンチインで片手持ちに戻す
+        if !split, splitFromOne {
+            splitFromOne = false
+            commitAll()
+            model.toggleGrip()
+        }
+    }
     private let panelModel = PanelModel()
     private var middleHost: UIHostingController<MiddlePanel>?
 
