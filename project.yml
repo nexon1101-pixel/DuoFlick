@@ -7,11 +7,12 @@ packages:
   AzooKeyKanaKanjiConverter:
     url: https://github.com/azooKey/AzooKeyKanaKanjiConverter
     revision: 3f93209534c148a563d92ef77059953b51777266  # v0.9
+    traits: [Zenzai]
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.17.0"
-    CURRENT_PROJECT_VERSION: "30"
+    MARKETING_VERSION: "0.18.0"
+    CURRENT_PROJECT_VERSION: "31"
     TARGETED_DEVICE_FAMILY: "1"
 targets:
   DuoFlick:

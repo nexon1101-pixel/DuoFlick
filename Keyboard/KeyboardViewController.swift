@@ -557,7 +557,11 @@ final class KeyboardViewController: UIInputViewController {
     /// 入力欄に下線付きの文字があるか
     private var markedActive = false
 
+    /// 入力欄に今出している下線付きの文字
+    private var shownMarked = ""
+
     private func showMarked(_ text: String) {
+        shownMarked = text
         textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
         markedActive = true
     }
@@ -565,6 +569,7 @@ final class KeyboardViewController: UIInputViewController {
     /// 下線付きの文字を消す（入力中の文字を全部消したとき）
     private func clearMarked() {
         guard markedActive else { return }
+        shownMarked = ""
         textDocumentProxy.setMarkedText("", selectedRange: NSRange(location: 0, length: 0))
         textDocumentProxy.unmarkText()
         markedActive = false
@@ -573,12 +578,20 @@ final class KeyboardViewController: UIInputViewController {
     /// 下線付きの文字を、確定した文字で置き換える
     private func insertCommitted(_ text: String) {
         textDocumentProxy.insertText(text)
+        shownMarked = ""
         markedActive = false
     }
 
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
     private func updateComposition() {
         composer.typoCorrection = model.settings.typoCorrection
+        composer.zenzai = model.settings.zenzai
+        if model.settings.zenzai {
+            // 読みの左にある文字を、変換の文脈として渡す（下線付きの文字は除く）
+            var before = textDocumentProxy.documentContextBeforeInput ?? ""
+            if !shownMarked.isEmpty, before.hasSuffix(shownMarked) { before.removeLast(shownMarked.count) }
+            composer.leftContext = String(before.suffix(30))
+        }
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()

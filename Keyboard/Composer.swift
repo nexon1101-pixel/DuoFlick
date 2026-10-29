@@ -331,6 +331,10 @@ final class Composer {
     private(set) var needsRefresh = false
     /// 打ち間違いを直した候補も出すか（設定で切り替える）
     var typoCorrection = false
+    /// AI（Zenzai）で変換するか（設定で切り替える）と、その文脈に使う、入力欄で読みの左にある文字
+    var zenzai = false
+    var leftContext: String?
+    private static let zenzaiModelURL = Bundle.main.url(forResource: "zenz-xsmall", withExtension: "gguf")
 
     /// 読みが変わったら、後でまとめて変換する（打鍵のたびに変換すると重いため）。
     /// 変換が終わるまでは前の候補を出したままにして、帯がちらつかないようにする。
@@ -363,6 +367,10 @@ final class Composer {
         let target = isSegmented ? composing.prefixToCursorPosition() : composing
         var requestOptions = options
         requestOptions.needTypoCorrection = typoCorrection
+        if zenzai, let url = Self.zenzaiModelURL {
+            requestOptions.zenzaiMode = .on(weight: url, inferenceLimit: 1, personalizationMode: nil,
+                                            versionDependentMode: .v3(.init(leftSideContext: leftContext)))
+        }
         candidates = converter.requestCandidates(target, options: requestOptions).mainResults
         if rawValid, !isSegmented, !rawRoman.isEmpty, rawRoman.allSatisfy({ $0.isASCII }),
            rawRoman != composing.convertTarget, !candidates.contains(where: { $0.text == rawRoman }) {

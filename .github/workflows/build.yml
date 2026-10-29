@@ -21,6 +21,12 @@ jobs:
         continue-on-error: true
         run: python3 .github/scripts/inspect.py
 
+      - name: Download Zenzai model (xsmall)
+        run: |
+          curl -L --fail -o Keyboard/zenz-xsmall.gguf \
+            https://huggingface.co/Miwa-Keita/zenz-v3.1-xsmall-gguf/resolve/main/ggml-model-Q5_K_M.gguf
+          ls -la Keyboard/zenz-xsmall.gguf
+
       - name: Install XcodeGen
         run: brew install xcodegen
 

@@ -167,6 +167,7 @@ struct SettingsScreen: View {
                 Toggle("続けてタップで文字を切り替え", isOn: $model.settings.toggleTap)
                 Toggle("ずれ補正（押す位置と斜めのくせ）", isOn: $model.settings.autoCorrect)
                 Toggle("打ち間違いの候補（試験的）", isOn: $model.settings.typoCorrection)
+                Toggle("AIで変換（試験的）", isOn: $model.settings.zenzai)
                 Button {
                     actions.onResetOffset()
                     offset = actions.offsetText()
