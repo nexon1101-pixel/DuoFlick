@@ -151,6 +151,7 @@ final class KeyboardViewController: UIInputViewController {
         mode = m
         keyboardView.mode = m
         if m != .qwerty { shiftState = .off }
+        autoCapOff = false
         updateShiftDisplay()
         updateKeyLabels()
         updateHeight(force: true)
@@ -257,8 +258,14 @@ final class KeyboardViewController: UIInputViewController {
         case .shift:
             // 1回で次の1文字だけ大文字、すぐにもう1回で固定
             let now = Date()
-            if shiftState == .on, now.timeIntervalSince(lastShiftTap) < 0.35 {
+            let quick = now.timeIntervalSince(lastShiftTap) < 0.35
+            if quick, shiftState == .on || autoCapOff {
+                // すぐにもう1回押したら固定
                 shiftState = .locked
+                autoCapOff = false
+            } else if shiftState == .off, shouldAutoCapitalize() {
+                // 自動で大文字になっているところは、シフトで小文字にできる（もう一度押すと大文字に戻る）
+                autoCapOff.toggle()
             } else {
                 shiftState = shiftState == .off ? .on : .off
             }
@@ -335,11 +342,13 @@ final class KeyboardViewController: UIInputViewController {
     private enum ShiftState { case off, on, locked }
     private var shiftState: ShiftState = .off
     private var lastShiftTap = Date.distantPast
+    /// 文頭などで自動的に大文字になるところを、シフトで小文字に打ち消しているか
+    private var autoCapOff = false
     /// 英字キーボードで日本語を打つ（ローマ字でかなにして変換する）
     private var japanese = false
 
     private func updateShiftDisplay() {
-        keyboardView.uppercase = shiftState != .off || (mode == .qwerty && shouldAutoCapitalize())
+        keyboardView.uppercase = shiftState != .off || (mode == .qwerty && !autoCapOff && shouldAutoCapitalize())
         keyboardView.capsLock = shiftState == .locked
     }
 
@@ -347,8 +356,9 @@ final class KeyboardViewController: UIInputViewController {
     private func styled(_ s: String) -> String {
         var out = s
         if mode == .qwerty, s.count == 1, let c = s.first, c.isLetter, c.isASCII {
-            if shiftState != .off || shouldAutoCapitalize() { out = s.uppercased() }
+            if shiftState != .off || (!autoCapOff && shouldAutoCapitalize()) { out = s.uppercased() }
             if shiftState == .on { shiftState = .off }
+            autoCapOff = false
         }
         return out
     }
