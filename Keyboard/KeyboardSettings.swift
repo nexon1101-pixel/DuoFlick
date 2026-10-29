@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreGraphics
 
 enum KeyboardShape: String, Codable, CaseIterable {
     case standard   // 画面いっぱいの格子（両手、iPhone標準に近い）
@@ -30,6 +31,15 @@ struct KeyboardSettings: Codable, Equatable {
     var hand: Hand = .right
     /// 両手から片手に戻すときに使う形
     var oneHandShape: KeyboardShape = .rightGrid
+    /// キーの文字の大きさ（倍率）
+    var labelScale: Double = 1.0
+    /// 配色（ライトモード・ダークモード別）
+    var themeLight: String = "standard"
+    var themeDark: String = "standard"
+    /// キーを押したときの振動（フルアクセスが必要）
+    var haptics: Bool = true
+    /// 押した位置のずれを覚えて判定を補正する
+    var autoCorrect: Bool = true
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape
@@ -53,34 +63,104 @@ struct KeyboardSettings: Codable, Equatable {
         followFan = (try? c.decode(Bool.self, forKey: .followFan)) ?? d.followFan
         hand = (try? c.decode(Hand.self, forKey: .hand)) ?? d.hand
         oneHandShape = (try? c.decode(KeyboardShape.self, forKey: .oneHandShape)) ?? d.oneHandShape
+        labelScale = (try? c.decode(Double.self, forKey: .labelScale)) ?? d.labelScale
+        themeLight = (try? c.decode(String.self, forKey: .themeLight)) ?? d.themeLight
+        themeDark = (try? c.decode(String.self, forKey: .themeDark)) ?? d.themeDark
+        haptics = (try? c.decode(Bool.self, forKey: .haptics)) ?? d.haptics
+        autoCorrect = (try? c.decode(Bool.self, forKey: .autoCorrect)) ?? d.autoCorrect
     }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。
     static let ptPerMM: Double = 6.1
-    private static let storeKey = "DuoFlick.settings.v1"
-
-    static func load() -> KeyboardSettings {
-        guard let data = UserDefaults.standard.data(forKey: storeKey),
+    static func load(profile: ScreenProfile) -> KeyboardSettings {
+        guard let data = UserDefaults.standard.data(forKey: profile.storeKey),
               let s = try? JSONDecoder().decode(KeyboardSettings.self, from: data) else {
+            // 内側画面の設定がまだなければ、外側画面の設定を元にする
+            if profile == .wide, let base = try? JSONDecoder().decode(
+                KeyboardSettings.self, from: UserDefaults.standard.data(forKey: ScreenProfile.narrow.storeKey) ?? Data()) {
+                var w = base
+                w.shape = .standard
+                return w
+            }
             return KeyboardSettings()
         }
         return s
     }
 
-    func save() {
+    func save(profile: ScreenProfile) {
         if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: Self.storeKey)
+            UserDefaults.standard.set(data, forKey: profile.storeKey)
         }
     }
 }
 
+/// 画面の幅で設定を分ける（iPhone Duo の外側画面と、開いた内側画面）
+enum ScreenProfile: String {
+    case narrow, wide
+
+    static func forWidth(_ w: CGFloat) -> ScreenProfile { w > 480 ? .wide : .narrow }
+
+    var storeKey: String { self == .narrow ? "DuoFlick.settings.v1" : "DuoFlick.settings.wide.v1" }
+    var title: String { self == .narrow ? "外側画面" : "内側画面" }
+}
+
+/// 保存した設定（最大5つ）
+struct SavedPreset: Codable, Identifiable {
+    var id = UUID()
+    var name: String
+    var settings: KeyboardSettings
+}
+
 final class SettingsModel: ObservableObject {
     @Published var settings: KeyboardSettings {
-        didSet { if settings != oldValue { onChange?(settings) } }
+        didSet {
+            if settings != oldValue {
+                settings.save(profile: profile)
+                onChange?(settings)
+            }
+        }
     }
+    @Published private(set) var profile: ScreenProfile = .narrow
+    @Published private(set) var presets: [SavedPreset] = []
     var onChange: ((KeyboardSettings) -> Void)?
 
+    private static let presetKey = "DuoFlick.presets.v1"
+
     init() {
-        settings = KeyboardSettings.load()
+        settings = KeyboardSettings.load(profile: .narrow)
+        if let data = UserDefaults.standard.data(forKey: Self.presetKey),
+           let list = try? JSONDecoder().decode([SavedPreset].self, from: data) {
+            presets = list
+        }
+    }
+
+    /// 画面の幅が変わったら、その画面用の設定に切り替える
+    func use(profile p: ScreenProfile) {
+        guard p != profile else { return }
+        profile = p
+        settings = KeyboardSettings.load(profile: p)
+        onChange?(settings)
+    }
+
+    func savePreset() {
+        let n = (1...9).first { i in !presets.contains { $0.name == "設定\(i)" } } ?? presets.count + 1
+        presets.insert(SavedPreset(name: "設定\(n)", settings: settings), at: 0)
+        if presets.count > 5 { presets.removeLast(presets.count - 5) }
+        storePresets()
+    }
+
+    func loadPreset(_ p: SavedPreset) {
+        settings = p.settings
+    }
+
+    func deletePreset(_ p: SavedPreset) {
+        presets.removeAll { $0.id == p.id }
+        storePresets()
+    }
+
+    private func storePresets() {
+        if let data = try? JSONEncoder().encode(presets) {
+            UserDefaults.standard.set(data, forKey: Self.presetKey)
+        }
     }
 }

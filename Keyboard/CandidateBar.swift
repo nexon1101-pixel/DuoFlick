@@ -5,8 +5,11 @@ final class CandidateBar: UIView {
     static let height: CGFloat = 44
 
     var onSelect: ((Int) -> Void)?
+    /// 右端の∨／∧ボタン（候補の一覧を開く・閉じる）
+    var onExpand: (() -> Void)?
 
     private let scroll = UIScrollView()
+    private let expandButton = UIButton(type: .system)
     private let stack = UIStackView()
 
     override init(frame: CGRect) {
@@ -20,9 +23,19 @@ final class CandidateBar: UIView {
         stack.alignment = .center
         stack.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(stack)
+        expandButton.translatesAutoresizingMaskIntoConstraints = false
+        expandButton.tintColor = Palette.text
+        expandButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        expandButton.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
+        expandButton.isHidden = true
+        addSubview(expandButton)
         NSLayoutConstraint.activate([
+            expandButton.trailingAnchor.constraint(equalTo: trailingAnchor),
+            expandButton.topAnchor.constraint(equalTo: topAnchor),
+            expandButton.bottomAnchor.constraint(equalTo: bottomAnchor),
+            expandButton.widthAnchor.constraint(equalToConstant: 48),
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: expandButton.leadingAnchor),
             scroll.topAnchor.constraint(equalTo: topAnchor),
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 8),
@@ -69,6 +82,16 @@ final class CandidateBar: UIView {
         } else {
             scroll.setContentOffset(.zero, animated: false)
         }
+    }
+
+    /// ∨ボタンを出すか、一覧を開いているか（開いているときは∧）
+    func setExpand(visible: Bool, expanded: Bool) {
+        expandButton.isHidden = !visible
+        expandButton.setImage(UIImage(systemName: expanded ? "chevron.up" : "chevron.down"), for: .normal)
+    }
+
+    @objc private func expandTapped() {
+        onExpand?()
     }
 
     @objc private func tapped(_ b: UIButton) {

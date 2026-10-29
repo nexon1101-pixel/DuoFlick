@@ -61,6 +61,12 @@ struct KeyDef {
         if case .delete = action { return true }
         return false
     }
+
+    /// ⚙キー（上フリックで定型文、右フリックでクリップボード）
+    var isSettings: Bool {
+        if case .settings = action { return true }
+        return false
+    }
 }
 
 enum KeyCatalog {

@@ -34,6 +34,8 @@ enum TuningParams {
                     keyPath: \.edgeGrowPercent, shapes: [.rightGrid, .fan], compareDelta: nil),
         TuningParam(id: "t", label: "方向の傾き", range: -30...30, step: 1, unit: "°",
                     keyPath: \.tiltDeg, shapes: KeyboardShape.allCases, compareDelta: nil),
+        TuningParam(id: "l", label: "文字の大きさ", range: 0.7...1.4, step: 0.05, unit: "倍",
+                    keyPath: \.labelScale, shapes: KeyboardShape.allCases, compareDelta: nil),
     ]
 
     static func clamp(_ p: TuningParam, _ v: Double) -> Double {
@@ -42,7 +44,7 @@ enum TuningParams {
     }
 
     static func format(_ p: TuningParam, _ v: Double) -> String {
-        let number = p.step < 1 ? String(format: "%.1f", v) : String(format: "%.0f", v)
+        let number = p.step < 0.1 ? String(format: "%.2f", v) : (p.step < 1 ? String(format: "%.1f", v) : String(format: "%.0f", v))
         return number + p.unit
     }
 }
@@ -70,7 +72,13 @@ struct TuningBar: View {
     let onClose: () -> Void
     let onRegister: () -> Void
     let diagnose: () -> String
+    let onPhrases: () -> Void
+    let onClipboard: () -> Void
+    let offsetText: () -> String
+    let onResetOffset: () -> Void
     @State private var diagnosis: String?
+    @State private var showThemes = false
+    @State private var showPresets = false
     @State private var selectedID = "w"
     @State private var compare: CompareState?
     @State private var showDictionary = false
@@ -96,6 +104,10 @@ struct TuningBar: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+            } else if showThemes {
+                themeView
+            } else if showPresets {
+                presetView
             } else if showDictionary {
                 dictionaryView
             } else if compare != nil {
@@ -113,6 +125,7 @@ struct TuningBar: View {
     private var manualView: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
+                Text(model.profile.title).font(.caption2).foregroundStyle(.secondary)
                 Picker("形", selection: $model.settings.shape) {
                     Text("両手").tag(KeyboardShape.standard)
                     Text("片手・格子").tag(KeyboardShape.rightGrid)
@@ -131,8 +144,19 @@ struct TuningBar: View {
                             model.settings.hand = model.settings.hand == .right ? .left : .right
                         }
                     }
+                    chip("定型文", on: false) { onPhrases() }
+                    chip("クリップボード", on: false) { onClipboard() }
                     chip("単語登録", on: false) { onRegister() }
                     chip("辞書の一覧", on: false) { showDictionary = true }
+                    chip("配色", on: false) { showThemes = true }
+                    chip("保存と呼び出し", on: false) { showPresets = true }
+                    chip(model.settings.haptics ? "振動：オン" : "振動：オフ", on: model.settings.haptics) {
+                        model.settings.haptics.toggle()
+                    }
+                    chip(model.settings.autoCorrect ? "ずれ補正：オン" : "ずれ補正：オフ", on: model.settings.autoCorrect) {
+                        model.settings.autoCorrect.toggle()
+                    }
+                    chip("ずれ補正をリセット（\(offsetText())）", on: false) { onResetOffset() }
                     chip("変換の診断", on: false) { diagnosis = diagnose() }
                     if model.settings.shape == .fan {
                         chip(model.settings.followFan ? "扇に沿わせる：オン" : "扇に沿わせる：オフ",
@@ -187,6 +211,75 @@ struct TuningBar: View {
 
     private func nudge(_ p: TuningParam, _ delta: Double) {
         model.settings[keyPath: p.keyPath] = TuningParams.clamp(p, model.settings[keyPath: p.keyPath] + delta)
+    }
+
+    // MARK: - 配色
+
+    private var themeView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("配色").font(.footnote.weight(.semibold))
+                Spacer()
+                Button("戻る") { showThemes = false }.font(.footnote)
+            }
+            themeRow("ライト", selection: $model.settings.themeLight)
+            themeRow("ダーク", selection: $model.settings.themeDark)
+        }
+    }
+
+    private func themeRow(_ title: String, selection: Binding<String>) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(.caption).frame(width: 40, alignment: .leading)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(KeyTheme.all, id: \.id) { t in
+                        chip(t.name, on: selection.wrappedValue == t.id) { selection.wrappedValue = t.id }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 設定の保存と呼び出し
+
+    private var presetView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("設定の保存と呼び出し").font(.footnote.weight(.semibold))
+                Spacer()
+                Button("今の設定を保存") { model.savePreset() }.font(.footnote)
+                Button("戻る") { showPresets = false }.font(.footnote)
+            }
+            if model.presets.isEmpty {
+                Text("保存した設定はまだありません。5つまで保存できます。")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(spacing: 4) {
+                        ForEach(model.presets) { p in
+                            HStack {
+                                Text(p.name).font(.footnote)
+                                Text(shapeName(p.settings)).font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                                Button("呼び出す") { model.loadPreset(p) }.font(.footnote)
+                                Button(role: .destructive) { model.deletePreset(p) } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .font(.footnote)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func shapeName(_ s: KeyboardSettings) -> String {
+        switch s.shape {
+        case .standard: return "両手"
+        case .rightGrid: return s.hand == .right ? "片手・格子・右手" : "片手・格子・左手"
+        case .fan: return s.hand == .right ? "片手・扇形・右手" : "片手・扇形・左手"
+        }
     }
 
     // MARK: - ユーザー辞書

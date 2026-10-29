@@ -8,6 +8,10 @@ final class KeyboardViewController: UIInputViewController {
     private let candidateBar = CandidateBar()
     private let guideView = GuideOverlayView()
     private let composer = Composer()
+    private let phrases = PhraseStore()
+    private let clipboard = ClipboardStore()
+    private let haptic = UIImpactFeedbackGenerator(style: .light)
+    private var clipboardTimer: Timer?
     private var heightConstraint: NSLayoutConstraint?
     private var keyboardTop: NSLayoutConstraint?
     private var lastWidth: CGFloat = 0
@@ -60,9 +64,14 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.guideView = guideView
         keyboardView.settings = model.settings
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }
+        keyboardView.onPress = { [weak self] in
+            guard let self, self.model.settings.haptics, self.hasFullAccess else { return }
+            self.haptic.impactOccurred()
+        }
         keyboardView.onCursor = { [weak self] steps in self?.cursorDrag(steps) }
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
+        candidateBar.onExpand = { [weak self] in self?.toggleCandidateList() }
 
         composer.userWords = dictionary.words
         dictionary.onChange = { [weak self] in
@@ -71,7 +80,6 @@ final class KeyboardViewController: UIInputViewController {
         }
         model.onChange = { [weak self] s in
             guard let self else { return }
-            s.save()
             self.keyboardView.settings = s
             self.updateHeight(force: true)
         }
@@ -81,16 +89,31 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         applyKeyboardType()
+        haptic.prepare()
+        // キーボードを開いている間にコピーされたものを、クリップボードの履歴に残す
+        if hasFullAccess {
+            clipboard.capture()
+            clipboardTimer?.invalidate()
+            clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                self?.clipboard.capture()
+            }
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        clipboardTimer?.invalidate()
+        clipboardTimer = nil
         commitAll()
         composer.save()
     }
 
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
+        // 外側画面と内側画面で、別々の設定を使う
+        if view.bounds.width > 0 {
+            model.use(profile: ScreenProfile.forWidth(view.bounds.width))
+        }
         updateHeight(force: false)
     }
 
@@ -213,7 +236,11 @@ final class KeyboardViewController: UIInputViewController {
         case .modeSwitch:
             setMode(mode.next)
         case .settings:
-            showTuning(topHost == nil)
+            switch dir {
+            case .up: showPhrases()
+            case .right: showClipboard()
+            default: showTuning(topHost == nil)
+            }
         case .nextKeyboard:
             commitAll()
             advanceToNextInputMode()
@@ -354,6 +381,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
     private func updateComposition() {
+        hideCandidateList()
         if composer.isEmpty {
             clearMarked()
         } else {
@@ -392,7 +420,46 @@ final class KeyboardViewController: UIInputViewController {
             candidateBar.show(composer.candidateTexts, selected: composer.selectedIndex)
         } else {
             candidateBar.show(composer.predictionTexts, selected: nil)
+            hideCandidateList()
         }
+        let canExpand = !composer.isEmpty && !composer.candidateTexts.isEmpty
+        if !canExpand { hideCandidateList() }
+        candidateBar.setExpand(visible: canExpand, expanded: listHost != nil)
+    }
+
+    // MARK: - 候補の一覧
+
+    private var listHost: UIHostingController<CandidateList>?
+
+    private func toggleCandidateList() {
+        if listHost != nil { hideCandidateList(); refreshBar(); return }
+        composer.refreshIfNeeded()
+        let list = CandidateList(items: composer.listTexts) { [weak self] i in
+            guard let self else { return }
+            self.hideCandidateList()
+            self.commitCandidate(i)
+        }
+        let host = UIHostingController(rootView: list)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(host)
+        view.addSubview(host.view)
+        host.didMove(toParent: self)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: candidateBar.bottomAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        listHost = host
+        candidateBar.setExpand(visible: true, expanded: true)
+    }
+
+    private func hideCandidateList() {
+        guard let host = listHost else { return }
+        host.willMove(toParent: nil)
+        host.view.removeFromSuperview()
+        host.removeFromParent()
+        listHost = nil
     }
 
     private func selectFromBar(_ index: Int) {
@@ -428,6 +495,83 @@ final class KeyboardViewController: UIInputViewController {
         lastCommit = (text, reading)
         refreshBar()
         schedulePredictions()
+    }
+
+    // MARK: - 定型文・クリップボード
+
+    private var panelHost: UIHostingController<TextListPanel>?
+
+    private func showPhrases() {
+        let panel = TextListPanel(
+            title: "定型文",
+            store: phrases,
+            emptyMessage: "定型文はまだありません。入力欄で文字を選択してから「選択した文字を追加」を押すか、クリップボードの履歴から追加できます。",
+            notice: nil,
+            addTitle: "選択した文字を追加",
+            onAdd: { [weak self] in self?.addPhraseFromSelection() },
+            secondaryTitle: nil,
+            onSecondary: nil,
+            onSelect: { [weak self] text in self?.insertFromPanel(text) },
+            onClose: { [weak self] in self?.hidePanel() })
+        showPanel(panel)
+    }
+
+    private func showClipboard() {
+        if hasFullAccess { clipboard.capture() }
+        let notice = hasFullAccess ? nil :
+            "履歴を残すには、設定アプリの「一般」→「キーボード」→「キーボード」→「DuoFlick」で「フルアクセスを許可」をオンにしてください。"
+        let panel = TextListPanel(
+            title: "クリップボード",
+            store: clipboard,
+            emptyMessage: "キーボードを開いている間にコピーした文字が、ここに残ります。",
+            notice: notice,
+            addTitle: nil,
+            onAdd: nil,
+            secondaryTitle: "定型文に",
+            onSecondary: { [weak self] text in self?.phrases.add(text) },
+            onSelect: { [weak self] text in self?.insertFromPanel(text) },
+            onClose: { [weak self] in self?.hidePanel() })
+        showPanel(panel)
+    }
+
+    private func addPhraseFromSelection() {
+        let selected = textDocumentProxy.selectedText ?? ""
+        let text = selected.isEmpty ? (lastCommit?.text ?? "") : selected
+        phrases.add(text)
+    }
+
+    private func insertFromPanel(_ text: String) {
+        commitAll()
+        composer.clearPredictions()
+        textDocumentProxy.insertText(text)
+        lastCommit = nil
+        hidePanel()
+        refreshBar()
+    }
+
+    private func showPanel(_ panel: TextListPanel) {
+        hidePanel()
+        hideCandidateList()
+        let host = UIHostingController(rootView: panel)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(host)
+        view.addSubview(host.view)
+        host.didMove(toParent: self)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: keyboardView.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        panelHost = host
+    }
+
+    private func hidePanel() {
+        guard let host = panelHost else { return }
+        host.willMove(toParent: nil)
+        host.view.removeFromSuperview()
+        host.removeFromParent()
+        panelHost = nil
     }
 
     // MARK: - 単語登録
@@ -488,7 +632,17 @@ final class KeyboardViewController: UIInputViewController {
                 self?.hideTop()
                 self?.startRegister()
             },
-            diagnose: { [weak self] in self?.composer.diagnostics() ?? "" })
+            diagnose: { [weak self] in self?.composer.diagnostics() ?? "" },
+            onPhrases: { [weak self] in
+                self?.hideTop()
+                self?.showPhrases()
+            },
+            onClipboard: { [weak self] in
+                self?.hideTop()
+                self?.showClipboard()
+            },
+            offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
+            onResetOffset: { [weak self] in self?.keyboardView.resetOffset() })
         showTop(UIHostingController(rootView: bar), height: tuningHeight)
     }
 

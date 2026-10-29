@@ -83,6 +83,8 @@ final class Composer {
     }
 
     var candidateTexts: [String] { candidates.map(\.text) }
+    /// 一覧に出す候補（多すぎると重いので200個まで）
+    var listTexts: [String] { candidates.prefix(200).map(\.text) }
     var predictionTexts: [String] { predictions.map(\.text) }
 
     func clearPredictions() {
