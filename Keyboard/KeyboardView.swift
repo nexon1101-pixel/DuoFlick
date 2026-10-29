@@ -228,35 +228,28 @@ final class KeyboardView: UIView {
         return chars
     }
 
-    /// 数字キーは右（左手のときは左）に寄せるほど親指が届きやすい
-    private var numberMirrored: Bool { settings.shape != .standard && settings.hand == .left }
+    /// 数字を入れるときに書き換えるかなキー（電話の配置：あかさ＝123、たなは＝456、まやら＝789、わ＝0）
+    private static let numberKeyDigits = ["a": "1", "ka": "2", "sa": "3", "ta": "4", "na": "5",
+                                          "ha": "6", "ma": "7", "ya": "8", "ra": "9", "wa": "0"]
 
-    /// 数字を並べる入力エリア全体（電話のように 1〜9 を3列、いちばん下の段の真ん中に 0）
-    private static let numberGridDigits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", ""]
-    private var numberGridRect: CGRect { bounds.insetBy(dx: 6, dy: 6) }
-
-    private func numberGridIndex(at p: CGPoint) -> Int {
-        let r = numberGridRect
-        let col = min(max(Int((p.x - r.minX) / (r.width / 3)), 0), 2)
-        let row = min(max(Int((p.y - r.minY) / (r.height / 4)), 0), 3)
-        return row * 3 + col
+    /// 指のある、数字に書き換えたキー
+    private func numberKey(at p: CGPoint) -> LaidKey? {
+        keys.first { Self.numberKeyDigits[$0.def.id] != nil && $0.path.contains(p) }
     }
 
     private func numberGuide(_ a: Active) -> FlickGuide {
-        let side: CGFloat = numberMirrored ? -1 : 1
-        if a.numberStage != nil {
-            return FlickGuide(center: .zero, size: .zero, rotation: 0, chars: [], selected: .tap,
-                              grid: Self.numberGridDigits, gridRect: numberGridRect,
-                              gridSelected: numberGridIndex(at: a.current))
+        let current = numberKey(at: a.current)?.def.id
+        let cells: [GuideCell] = keys.compactMap { k in
+            guard let d = Self.numberKeyDigits[k.def.id] else { return nil }
+            let m: CGFloat = min(k.size.width, k.size.height)
+            return GuideCell(path: k.path, center: k.center, rotation: textRotation(k), text: d,
+                             selected: k.def.id == current,
+                             fontSize: m * 0.5 * CGFloat(settings.labelScale), isSector: k.isSector)
         }
-        // まだ動かしていない：動かすと数字が全体に出ることを示す
-        return FlickGuide(center: a.key.center, size: a.key.size, rotation: 0,
-                          chars: ["", "", "0〜9", "", ""], selected: .tap,
-                          offsets: [.zero, .zero, CGPoint(x: side, y: -1), .zero, .zero],
-                          keepCross: true)
+        return FlickGuide(center: .zero, size: .zero, rotation: 0, chars: [], selected: .tap, cells: cells)
     }
 
-    /// 数字キーを押したまま少し動かしたら、数字を入力エリア全体に出す。離したときに、指のあるマスの数字を入れる
+    /// 数字キーを押したまま少し動かしたら、かなキーを数字に書き換えて見せる。離したときに、指のあるキーの数字を入れる
     private func trackNumber(_ a: Active, _ p: CGPoint) {
         guard a.numberStage == nil else { return }
         let dx: CGFloat = p.x - a.start.x
@@ -532,11 +525,9 @@ final class KeyboardView: UIView {
             a.timer?.invalidate()
             if a.key.def.isNumberPad {
                 // タップだけでは何も入れない
-                if a.numberStage != nil {
-                    let digit = Self.numberGridDigits[numberGridIndex(at: t.location(in: self))]
-                    if !digit.isEmpty {
-                        onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
-                    }
+                if a.numberStage != nil, let k = numberKey(at: t.location(in: self)),
+                   let digit = Self.numberKeyDigits[k.def.id] {
+                    onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
                 }
                 continue
             }

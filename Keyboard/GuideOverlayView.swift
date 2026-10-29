@@ -1,5 +1,16 @@
 import UIKit
 
+/// 数字に書き換えて見せる1つのキー
+struct GuideCell {
+    let path: UIBezierPath
+    let center: CGPoint
+    let rotation: CGFloat
+    let text: String
+    let selected: Bool
+    let fontSize: CGFloat
+    let isSector: Bool
+}
+
 struct FlickGuide {
     let center: CGPoint
     let size: CGSize
@@ -12,10 +23,8 @@ struct FlickGuide {
     var keepCross = false
     /// true なら画面内に収めるための位置の調整をしない（呼び出し側で済ませている）
     var fixedPosition = false
-    /// 数字の入力：入力エリア全体に並べる数字（3列×4行、空はなにも入れないマス）。指定すると十字ではなくこれを描く
-    var grid: [String]? = nil
-    var gridRect: CGRect = .zero
-    var gridSelected: Int = -1
+    /// 数字の入力：かなキーの上に重ねて、数字に書き換えて見せるキー。指定すると十字ではなくこれを描く
+    var cells: [GuideCell]? = nil
 }
 
 /// フリック中のガイドを、変換候補の帯の上にも重ねて描くためのビュー。タッチは受け取らない。
@@ -39,26 +48,24 @@ final class GuideOverlayView: UIView {
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         for g in guides {
-            if g.grid != nil { drawGrid(g) } else { draw(g, in: ctx) }
+            if g.cells != nil { drawCells(g) } else { draw(g, in: ctx) }
         }
     }
 
-    /// 数字を入力エリア全体に並べて、指のあるマスを濃く出す
-    private func drawGrid(_ g: FlickGuide) {
-        guard let items = g.grid, !items.isEmpty else { return }
-        let r = g.gridRect
-        Palette.functionKey.setFill()
-        UIBezierPath(roundedRect: r.insetBy(dx: -4, dy: -4), cornerRadius: 12).fill()
-        let cw = r.width / 3, ch = r.height / 4
-        for (i, text) in items.enumerated() {
-            let cell = CGRect(x: r.minX + CGFloat(i % 3) * cw, y: r.minY + CGFloat(i / 3) * ch, width: cw, height: ch)
-                .insetBy(dx: 3, dy: 3)
-            if text.isEmpty { continue }
-            let selected = i == g.gridSelected
-            (selected ? Palette.pressed : Palette.key).setFill()
-            UIBezierPath(roundedRect: cell, cornerRadius: 10).fill()
-            drawLabel(text, in: cell, size: min(cell.width, cell.height) * 0.5,
-                      color: selected ? Palette.pressedText : Palette.text)
+    /// かなキーを数字に書き換えて見せる。指のあるキーを濃くする
+    private func drawCells(_ g: FlickGuide) {
+        guard let cells = g.cells, let ctx = UIGraphicsGetCurrentContext() else { return }
+        for c in cells {
+            let fill: UIColor = c.selected ? Palette.pressed : Palette.key
+            fill.setFill()
+            c.path.fill()
+            if c.isSector { fill.setStroke(); c.path.stroke() }
+            ctx.saveGState()
+            ctx.translateBy(x: c.center.x, y: c.center.y)
+            ctx.rotate(by: c.rotation)
+            drawLabel(c.text, in: CGRect(x: -40, y: -40, width: 80, height: 80), size: c.fontSize,
+                      color: c.selected ? Palette.pressedText : Palette.text)
+            ctx.restoreGState()
         }
     }
 
