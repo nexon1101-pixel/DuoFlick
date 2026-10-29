@@ -68,7 +68,10 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.grip = model.grip
         keyboardView.settings = model.settings
         keyboardView.onPinch = { [weak self] split in
-            guard let self, self.model.grip == .two, self.model.settings.splitKana != split else { return }
+            guard let self else { return }
+            // 片手持ちでピンチアウトしたら、両手持ちにして分割する
+            if split, self.model.grip == .one { self.commitAll(); self.model.toggleGrip() }
+            guard self.model.grip == .two, self.model.settings.splitKana != split else { return }
             self.model.settings.splitKana = split
         }
         keyboardView.onKey = { [weak self] def, dir in self?.handle(def, dir) }

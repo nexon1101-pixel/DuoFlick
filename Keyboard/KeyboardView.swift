@@ -139,7 +139,7 @@ final class KeyboardView: UIView {
     /// 両手持ちで、ピンチアウトしたらかなを左右に分け、ピンチインしたら元に戻す
     var onPinch: ((Bool) -> Void)?
     @objc private func pinched(_ g: UIPinchGestureRecognizer) {
-        guard g.state == .ended || g.state == .changed, grip == .two, mode == .kana else { return }
+        guard g.state == .ended || g.state == .changed, mode == .kana else { return }
         if g.scale > 1.25 { g.state = .ended; onPinch?(true) }
         else if g.scale < 0.8 { g.state = .ended; onPinch?(false) }
     }
@@ -207,6 +207,8 @@ final class KeyboardView: UIView {
             var symbolName = k.def.symbol
             // シフトは状態で記号を変える（iOS標準と同じ：通常・大文字・固定）
             if case .shift = k.def.action { symbolName = capsLock ? "capslock.fill" : (uppercase ? "shift.fill" : "shift") }
+            // 普通の改行のときは、リターンの記号にする（確定・検索などは文字のまま）
+            if case .newline = k.def.action, label == "改行" { symbolName = "return" }
             if let symbol = symbolName {
                 drawSymbol(symbol, center: k.center, rotation: textRotation(k),
                            pointSize: m * 0.36 * CGFloat(settings.labelScale), color: color, in: ctx)
