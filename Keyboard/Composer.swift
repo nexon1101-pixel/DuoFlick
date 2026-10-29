@@ -208,6 +208,25 @@ final class Composer {
         selectedIndex = nil
     }
 
+    /// 辞書が読めているかを確かめる（調整バーの「変換の診断」で表示）
+    func diagnostics() -> String {
+        let fm = FileManager.default
+        let dict = options.dictionaryResourceURL
+        let louds = dict.appendingPathComponent("louds", isDirectory: true)
+        let chid = louds.appendingPathComponent("charID.chid")
+        let loudsCount = (try? fm.contentsOfDirectory(atPath: louds.path).count) ?? -1
+        var lines: [String] = []
+        lines.append("辞書フォルダ：\(fm.fileExists(atPath: dict.path) ? "あり" : "なし")")
+        lines.append("louds：\(loudsCount)個　charID：\(fm.fileExists(atPath: chid.path) ? "あり" : "なし")")
+        var test = ComposingText()
+        test.insertAtCursorPosition("きょう", inputStyle: .direct)
+        let result = converter.requestCandidates(test, options: options).mainResults.prefix(5).map(\.text)
+        converter.stopComposition()
+        lines.append("「きょう」の候補：\(result.joined(separator: " / "))")
+        lines.append(dict.path)
+        return lines.joined(separator: "\n")
+    }
+
     /// 学習内容を保存する（キーボードを閉じるとき）
     func save() {
         guard converterReady else { return }

@@ -69,6 +69,8 @@ struct TuningBar: View {
     @ObservedObject var dictionary: UserDictionaryStore
     let onClose: () -> Void
     let onRegister: () -> Void
+    let diagnose: () -> String
+    @State private var diagnosis: String?
     @State private var selectedID = "w"
     @State private var compare: CompareState?
     @State private var showDictionary = false
@@ -82,7 +84,19 @@ struct TuningBar: View {
 
     var body: some View {
         Group {
-            if showDictionary {
+            if let d = diagnosis {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("変換の診断").font(.footnote.weight(.semibold))
+                        Spacer()
+                        Button("戻る") { diagnosis = nil }.font(.footnote)
+                    }
+                    ScrollView {
+                        Text(d).font(.caption.monospaced()).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            } else if showDictionary {
                 dictionaryView
             } else if compare != nil {
                 compareView
@@ -119,6 +133,7 @@ struct TuningBar: View {
                     }
                     chip("単語登録", on: false) { onRegister() }
                     chip("辞書の一覧", on: false) { showDictionary = true }
+                    chip("変換の診断", on: false) { diagnosis = diagnose() }
                     if model.settings.shape == .fan {
                         chip(model.settings.followFan ? "扇に沿わせる：オン" : "扇に沿わせる：オフ",
                              on: model.settings.followFan) {

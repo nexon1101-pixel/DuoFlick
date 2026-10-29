@@ -438,7 +438,8 @@ final class KeyboardViewController: UIInputViewController {
             onRegister: { [weak self] in
                 self?.hideTop()
                 self?.startRegister()
-            })
+            },
+            diagnose: { [weak self] in self?.composer.diagnostics() ?? "" })
         showTop(UIHostingController(rootView: bar), height: tuningHeight)
     }
 
