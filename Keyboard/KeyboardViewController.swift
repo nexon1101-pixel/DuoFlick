@@ -357,6 +357,7 @@ final class KeyboardViewController: UIInputViewController {
             case .up: toggleSettings()
             case .left: showPhrases()
             case .right: showClipboard()
+            case .down: showEmoji()
             default:
                 commitAll()
                 advanceToNextInputMode()
@@ -954,6 +955,19 @@ final class KeyboardViewController: UIInputViewController {
             secondaryTitle: nil,
             onSecondary: nil,
             onSelect: { [weak self] text in self?.insertFromPanel(text) },
+            onClose: { [weak self] in self?.hidePanel() })
+        showPanel(panel)
+    }
+
+    private func showEmoji() {
+        commitAll()
+        let panel = EmojiPanel(
+            onSelect: { [weak self] e in
+                guard let self else { return }
+                self.composer.clearPredictions()
+                self.textDocumentProxy.insertText(e)
+                self.lastCommit = nil
+            },
             onClose: { [weak self] in self?.hidePanel() })
         showPanel(panel)
     }
