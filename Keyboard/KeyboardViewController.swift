@@ -209,8 +209,8 @@ final class KeyboardViewController: UIInputViewController {
         switch def.action {
         case .kana(let chars):
             let s = pick(chars, dir)
-            if isPunctuation(s) {
-                // 句読点は、入力中の文字を確定してからそのまま入れる
+            if isPunctuation(s) && composer.isEmpty {
+                // 入力中でないときの句読点は、そのまま入れる（入力中なら読みに足して変換を続ける）
                 commitAll()
                 composer.clearPredictions()
                 proxy.insertText(s)
@@ -370,16 +370,8 @@ final class KeyboardViewController: UIInputViewController {
         let proxy = textDocumentProxy
 
         if !composer.isEmpty, composer.reading.hasSuffix(prev) {
-            if isPunctuation(next) {
-                composer.deleteBackward()
-                commitAll()
-                composer.clearPredictions()
-                proxy.insertText(next)
-                refreshBar()
-            } else {
-                _ = composer.replaceLast(with: next)
-                updateComposition()
-            }
+            _ = composer.replaceLast(with: next)
+            updateComposition()
         } else if composer.isEmpty, proxy.documentContextBeforeInput?.hasSuffix(prev) == true {
             proxy.deleteBackward()
             if case .kana = def.action, !isPunctuation(next) {
