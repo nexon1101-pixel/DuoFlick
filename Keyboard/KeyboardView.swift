@@ -273,7 +273,7 @@ final class KeyboardView: UIView {
     /// フリックのガイドに出す文字。1方向しかないキー（英字など）は出さない
     private func guideChars(_ def: KeyDef) -> [String]? {
         if numberLocked, Self.numberKeyDigits[def.id] != nil { return nil }
-        if case .nextKeyboard = def.action { return ["", "定型文", "設定", "履歴", "絵文字"] }
+        if case .nextKeyboard = def.action { return ["", "", "設定", "履歴", "定型文"] }
         if case .delete = def.action { return ["", "行削除", "語削除", "", "取り消し"] }
         guard let chars = def.flickChars, chars.filter({ !$0.isEmpty }).count > 1 else { return nil }
         return chars

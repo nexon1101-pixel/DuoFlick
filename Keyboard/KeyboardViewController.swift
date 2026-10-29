@@ -317,6 +317,16 @@ final class KeyboardViewController: UIInputViewController {
             japanese.toggle()
             shiftState = .off
             updateKeyLabels()
+            // 続けて2回タップしたら、絵文字を開く（1回目の切り替えは元に戻す）
+            let now = Date()
+            if now.timeIntervalSince(lastWidthTap) < 0.4 {
+                lastWidthTap = .distantPast
+                japanese.toggle()
+                updateKeyLabels()
+                showEmoji()
+            } else {
+                lastWidthTap = now
+            }
         case .splitKeys:
             setSplit(true)
         case .cursorRight:
@@ -372,18 +382,20 @@ final class KeyboardViewController: UIInputViewController {
         case .settings:
             toggleSettings()
         case .nextKeyboard:
-            // 地球儀：タップでキーボードを切り替え、上で設定、左で定型文、右でクリップボード
+            // 地球儀：タップでキーボードを切り替え、上で設定、右でクリップボード、下で定型文（絵文字は英字の「A／あ」キーのダブルタップ）
             switch dir {
             case .up: toggleSettings()
-            case .left: showPhrases()
+            case .left: return
             case .right: showClipboard()
-            case .down: showEmoji()
+            case .down: showPhrases()
             default:
                 commitAll()
                 advanceToNextInputMode()
             }
         }
     }
+
+    private var lastWidthTap = Date.distantPast
 
     private func toggleSettings() {
         if topHost != nil { hideTop() }
