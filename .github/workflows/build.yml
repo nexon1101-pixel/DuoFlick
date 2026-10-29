@@ -58,6 +58,15 @@ jobs:
           ls Payload/DuoFlick.app/Frameworks 2>/dev/null || echo "no Frameworks in app"
           otool -L "$APPEX/DuoFlickKeyboard" | head -40 || true
           otool -l "$APPEX/DuoFlickKeyboard" | grep -A2 LC_RPATH || true
+          DICT="$APPEX/AzooKeyKanakanjiConverter_KanaKanjiConverterModuleWithDefaultDictionary.bundle/Dictionary"
+          echo "== Dictionary =="; ls "$DICT" || true
+          echo "== louds count =="; ls "$DICT/louds" | wc -l
+          echo "== louds sample =="; ls "$DICT/louds" | head -15
+          echo "== ki =="; ls "$DICT/louds" | grep -i "キ\|30AD" | head -5 || true
+          echo "== submodule revision =="
+          cat build/SourcePackages/checkouts/AzooKeyKanaKanjiConverter/.gitmodules 2>/dev/null || true
+          git -C build/SourcePackages/checkouts/AzooKeyKanaKanjiConverter submodule status 2>/dev/null || true
+          git -C build/SourcePackages/checkouts/AzooKeyKanaKanjiConverter log --oneline -1 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         with:
