@@ -670,13 +670,18 @@ final class KeyboardViewController: UIInputViewController {
     private func refreshBar() {
         updateKeyLabels()
         if !composer.isEmpty {
+            pasteChip = false
             showBar(composer.candidateTexts, selected: composer.selectedIndex)
         } else {
+            pasteChip = false
             englishWords = domainCandidates.isEmpty ? currentEnglishCompletions() : []
             if !englishWords.isEmpty {
                 showBar(englishWords, selected: nil)
             } else {
-                showBar(domainCandidates.isEmpty ? composer.predictionTexts : domainCandidates, selected: nil)
+                let items = domainCandidates.isEmpty ? composer.predictionTexts : domainCandidates
+                // 出す候補がなく、クリップボードに文字があるときは、貼り付けを出す
+                pasteChip = items.isEmpty && hasFullAccess && UIPasteboard.general.hasStrings
+                showBar(pasteChip ? ["貼り付け"] : items, selected: nil)
             }
             hideCandidateList()
         }
@@ -835,7 +840,19 @@ final class KeyboardViewController: UIInputViewController {
         return Array(list.filter { $0.lowercased() != word.lowercased() }.prefix(12))
     }
 
+    /// 候補の帯に「貼り付け」を出しているか
+    private var pasteChip = false
+
     private func selectFromBar(_ index: Int) {
+        if pasteChip, composer.isEmpty {
+            if let text = UIPasteboard.general.string, !text.isEmpty {
+                composer.clearPredictions()
+                textDocumentProxy.insertText(text)
+                lastCommit = nil
+            }
+            refreshBar()
+            return
+        }
         if composer.isEmpty, domainCandidates.isEmpty, !englishWords.isEmpty, index < englishWords.count,
            let word = partialEnglishWord() {
             // 打ちかけの単語を、選んだ単語に置き換えて空白を入れる
