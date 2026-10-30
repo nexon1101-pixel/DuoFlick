@@ -176,6 +176,13 @@ enum KeyCatalog {
         s.map { c in (def: KeyDef(id: "q_" + String(c), label: String(c), action: .direct([String(c), "", "", "", ""])), weight: CGFloat(1)) }
     }
 
+    /// 英字キー。上フリックで数字・記号を入れる（ups は文字と同じ順）
+    private static func lettersUp(_ s: String, _ ups: String) -> Row {
+        zip(s, ups).map { c, u in
+            (def: KeyDef(id: "q_" + String(c), label: String(c), action: .direct([String(c), "", String(u), "", ""])), weight: CGFloat(1))
+        }
+    }
+
     private static func item(_ def: KeyDef, _ weight: CGFloat) -> (def: KeyDef, weight: CGFloat) {
         (def: def, weight: weight)
     }
@@ -188,7 +195,8 @@ enum KeyCatalog {
             (def: KeyDef(id: "width", label: "A", action: .widthToggle), weight: 1.2),
             (def: KeyDef(id: "paste", label: "貼付", action: .paste), weight: 1.2),
             (def: KeyDef(id: "mode", label: "あいう", action: .modeSwitch), weight: 1.2),
-            (def: KeyDef(id: "space", label: "space", action: .space), weight: 3.2),
+            (def: KeyDef(id: "qpunct", label: ",.?!", action: .direct([",", ".", "?", "!", "-"])), weight: 1.2),
+            (def: KeyDef(id: "space", label: "space", action: .space), weight: 2.4),
             (def: KeyDef(id: "newline", label: "改行", action: .newline), weight: 2.0),
         ]
         switch mode {
@@ -208,9 +216,9 @@ enum KeyCatalog {
             ]
         default:
             return [
-                letters("qwertyuiop"),
-                letters("asdfghjkl"),
-                [item(KeyDef(id: "shift", label: "⇧", action: .shift), 1.5)] + letters("zxcvbnm") + [delete],
+                lettersUp("qwertyuiop", "1234567890"),
+                lettersUp("asdfghjkl", "@#$%&*-+="),
+                [item(KeyDef(id: "shift", label: "⇧", action: .shift), 1.5)] + lettersUp("zxcvbnm", "(\")'/:;~") + [delete],
                 bottom,
             ]
         }

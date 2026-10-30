@@ -249,6 +249,21 @@ final class KeyboardViewController: UIInputViewController {
             if composer.selectedIndex != nil { commitAll() }
             composer.insert(pick(chars, dir))
             updateComposition()
+        case .direct(let chars) where japanese && mode != .kana
+            && (def.id == "qpunct" || (isLetterKey(def) && !(pick(chars, dir).first?.isLetter ?? true))):
+            // あモードの記号：句読点・ー は日本語の形で、数字もそのまま読みに足す（変換の候補が出る）。それ以外の記号はそのまま入れる
+            let raw = pick(chars, dir)
+            let jp = [",": "、", ".": "。", "?": "？", "!": "！", "-": "ー"]
+            if def.id == "qpunct" || raw.first?.isNumber == true {
+                if composer.selectedIndex != nil { commitAll() }
+                composer.insert(jp[raw] ?? raw)
+                updateComposition()
+            } else {
+                commitAll()
+                composer.clearPredictions()
+                proxy.insertText(raw)
+                refreshBar()
+            }
         case .direct(let chars) where mode == .qwerty && japanese && isLetterKey(def):
             // ローマ字で入力中の読みに足す。大文字はそのまま英字として入れる
             let raw = pick(chars, dir)
@@ -781,6 +796,7 @@ final class KeyboardViewController: UIInputViewController {
             for k in keyboardView.keys where !isAllowedWhileComposing(k.def) { disabled.insert(k.def.id) }
         }
         labels["width"] = japanese ? "あ" : "A"
+        labels["qpunct"] = japanese ? "、。?!" : ",.?!"
         if mode != .kana { labels["space"] = composer.isEmpty ? (japanese ? "空白" : "space") : "次候補" }
         keyboardView.labelOverrides = labels
         keyboardView.accentIDs = accent
