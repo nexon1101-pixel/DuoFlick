@@ -10,8 +10,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: 0.28.6
-    CURRENT_PROJECT_VERSION: 73
+    MARKETING_VERSION: 0.28.7
+    CURRENT_PROJECT_VERSION: 74
     TARGETED_DEVICE_FAMILY: "1,2"
 targets:
   DuoFlick:
