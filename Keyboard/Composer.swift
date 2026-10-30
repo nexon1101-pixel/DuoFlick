@@ -110,10 +110,10 @@ final class Composer {
     private var debugText = ""
 
     private func withExtra(_ texts: [String]) -> [String] {
-        guard !extras.isEmpty else { return debugText.isEmpty ? texts : texts + [debugText] }
+        guard !extras.isEmpty else { return debugText.isEmpty ? texts : [debugText] + texts }
         var t = texts
         t.insert(contentsOf: extras, at: min(extraAt, t.count))
-        if !debugText.isEmpty { t.append(debugText) }
+        if !debugText.isEmpty { t.insert(debugText, at: 0) }
         return t
     }
 
