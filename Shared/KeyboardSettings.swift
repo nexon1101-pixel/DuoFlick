@@ -28,6 +28,8 @@ struct KeyboardSettings: Codable, Equatable {
     var gapMM: Double = 1.0
     var edgeGrowPercent: Double = 0
     var marginMM: Double = 1.0
+    /// 両手持ちの分割で、真ん中の空きの広さ（キーの並びの幅に対する割合、%）
+    var splitGapPercent: Double = 20
     var bottomMarginMM: Double = 3.0
     var fanRadiusMM: Double = 80
     var fanAngleDeg: Double = 97
@@ -74,6 +76,7 @@ struct KeyboardSettings: Codable, Equatable {
         gapMM = (try? c.decode(Double.self, forKey: .gapMM)) ?? d.gapMM
         edgeGrowPercent = (try? c.decode(Double.self, forKey: .edgeGrowPercent)) ?? d.edgeGrowPercent
         marginMM = (try? c.decode(Double.self, forKey: .marginMM)) ?? d.marginMM
+        splitGapPercent = (try? c.decode(Double.self, forKey: .splitGapPercent)) ?? d.splitGapPercent
         bottomMarginMM = (try? c.decode(Double.self, forKey: .bottomMarginMM)) ?? d.bottomMarginMM
         fanRadiusMM = (try? c.decode(Double.self, forKey: .fanRadiusMM)) ?? d.fanRadiusMM
         fanAngleDeg = (try? c.decode(Double.self, forKey: .fanAngleDeg)) ?? d.fanAngleDeg

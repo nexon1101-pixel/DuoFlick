@@ -31,6 +31,9 @@ final class PreviewContainer: UIView {
     let kv = KeyboardView(frame: .zero)
     let ghost = GhostView(frame: .zero)
     var profile: ScreenProfile = .narrow
+    var typing = false {
+        didSet { kv.isUserInteractionEnabled = typing }
+    }
     /// 保存済みの設定（いまの設定と違うときだけ入れる）
     var reference: KeyboardSettings? {
         didSet { setNeedsLayout() }
@@ -87,6 +90,8 @@ struct KeyboardPreview: UIViewRepresentable {
     let showCorrection: Bool
     let reference: KeyboardSettings?
     let handle: PreviewHandle
+    var typing = false
+    var onType: ((KeyDef, FlickDirection) -> Void)? = nil
 
     func makeUIView(context: Context) -> PreviewContainer {
         let v = PreviewContainer(frame: .zero)
@@ -100,6 +105,8 @@ struct KeyboardPreview: UIViewRepresentable {
         v.kv.mode = mode
         v.kv.settings = settings
         v.kv.showCorrection = showCorrection
+        v.typing = typing
+        v.kv.onKey = onType
         v.reference = reference
         v.kv.setNeedsDisplay()
         v.setNeedsLayout()
@@ -128,6 +135,7 @@ struct DesignScreen: View {
     @State private var showCorrection = false
     @State private var offsetText = ""
     @State private var trial = ""
+    @State private var typing = false
     @State private var tab: Tab = .layout
     @State private var forceOpen = false
     /// 編集中の設定。「保存して反映」を押すまで、キーボードには渡さない
@@ -202,12 +210,15 @@ struct DesignScreen: View {
             }
             KeyboardPreview(settings: draft, grip: grip, mode: mode, profile: profile,
                             showCorrection: showCorrection,
-                            reference: dirty ? model.settings : nil, handle: handle)
+                            reference: dirty ? model.settings : nil, handle: handle,
+                            typing: typing, onType: typeKey)
                 .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
             if profile == .wide {
                 Text("内側画面は、実際のキーボードの幅（約669pt）で組んで、収まらないときは縮めて表示しています。").font(.caption2).foregroundStyle(.secondary)
             }
+            Toggle("このキーボードで試し打ちする", isOn: $typing)
+                .font(.footnote)
             Toggle("補正を見る", isOn: $showCorrection)
                 .font(.footnote)
                 .onChange(of: showCorrection) { _, on in
@@ -394,7 +405,20 @@ struct DesignScreen: View {
     }
 
     /// よく使う調整。残りは「細かい調整」にまとめる
-    private static let mainIDs = ["w", "h", "r", "a"]
+    /// プレビューのキーボードで打った文字を、試し打ちの欄に入れる（変換はしない）
+    private func typeKey(_ def: KeyDef, _ dir: FlickDirection) {
+        switch def.action {
+        case .kana(let a), .direct(let a):
+            if dir.rawValue < a.count, !a[dir.rawValue].isEmpty { trial += a[dir.rawValue] }
+        case .space: trial += " "
+        case .newline: trial += "\n"
+        case .delete: if !trial.isEmpty { trial.removeLast() }
+        case .layer(let m): mode = m
+        default: break
+        }
+    }
+
+    private static let mainIDs = ["w", "h", "r", "a", "m"]
 
     private func params(main: Bool) -> [TuningParam] {
         TuningParams.all.filter {
@@ -425,7 +449,8 @@ struct DesignScreen: View {
         "h": "キー1つの縦の長さ",
         "r": "扇のカーブの半径。小さいほど急に曲がります",
         "a": "扇を回す向き",
-        "m": "画面の端からキーまでの余白",
+        "m": "画面の端からキーまでの余白。両手持ちは、小さくするほどキーが端まで広がります",
+        "s": "両手持ちの分割で、左右のキーの間の空き。広いほどキーが細くなります",
         "b": "キーボードの下の余白",
         "f": "指を何mm動かすとフリックと判定するか",
         "g": "キーとキーのすき間",

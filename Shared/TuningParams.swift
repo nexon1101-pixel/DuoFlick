@@ -24,6 +24,8 @@ enum TuningParams {
                     keyPath: \.fanAngleDeg, shapes: [.fan], compareDelta: 10),
         TuningParam(id: "m", label: "端の余白", range: 0...20, step: 0.5, unit: "mm",
                     keyPath: \.marginMM, shapes: KeyboardShape.allCases, compareDelta: 3),
+        TuningParam(id: "s", label: "真ん中の空き", range: 5...40, step: 1, unit: "%",
+                    keyPath: \.splitGapPercent, shapes: [.standard], compareDelta: nil),
         TuningParam(id: "b", label: "下の余白", range: 0...20, step: 0.5, unit: "mm",
                     keyPath: \.bottomMarginMM, shapes: KeyboardShape.allCases, compareDelta: 3),
         TuningParam(id: "f", label: "フリック距離", range: 1.5...8, step: 0.1, unit: "mm",

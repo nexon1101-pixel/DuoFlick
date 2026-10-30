@@ -180,7 +180,7 @@ enum KeyboardLayout {
             let gaps: CGFloat = CGFloat(n - 1) * g
             if split {
                 // 真ん中の空きは、幅の2割ほど（キーの列は9列）
-                let mid: CGFloat = (W - 2 * m) * 0.2
+                let mid: CGFloat = (W - 2 * m) * CGFloat(s.splitGapPercent / 100)
                 let w: CGFloat = (W - 2 * m - gaps - mid) / CGFloat(n - 1)
                 colW = (0..<n).map { $0 == 4 ? mid : w }
             } else {
