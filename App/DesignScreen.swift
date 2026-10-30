@@ -91,6 +91,7 @@ struct KeyboardPreview: UIViewRepresentable {
     let reference: KeyboardSettings?
     let handle: PreviewHandle
     var typing = false
+    var flickGuide = false
     var onType: ((KeyDef, FlickDirection) -> Void)? = nil
 
     func makeUIView(context: Context) -> PreviewContainer {
@@ -106,6 +107,7 @@ struct KeyboardPreview: UIViewRepresentable {
         v.kv.settings = settings
         v.kv.showCorrection = showCorrection
         v.typing = typing
+        v.kv.showFlickGuide = flickGuide
         v.kv.onKey = onType
         v.reference = reference
         v.kv.setNeedsDisplay()
@@ -136,6 +138,9 @@ struct DesignScreen: View {
     @State private var offsetText = ""
     @State private var trial = ""
     @State private var typing = false
+    enum Focus { case layout, flick }
+    /// 最後に動かした設定の種類。点線（位置の変化）は配置を変えたときだけ、方向の線はフリックの設定を変えたときだけ出す
+    @State private var focus: Focus? = nil
     @State private var tab: Tab = .layout
     @State private var forceOpen = false
     /// 編集中の設定。「保存して反映」を押すまで、キーボードには渡さない
@@ -182,7 +187,7 @@ struct DesignScreen: View {
         }
         .onAppear {
             model.select(profile: profile, grip: grip)
-            draft = model.settings
+            draft = model.settings; focus = nil
         }
         .onChange(of: profile) { _, _ in switchContext() }
         .onChange(of: grip) { _, _ in switchContext() }
@@ -210,12 +215,15 @@ struct DesignScreen: View {
             }
             KeyboardPreview(settings: draft, grip: grip, mode: mode, profile: profile,
                             showCorrection: showCorrection,
-                            reference: dirty ? model.settings : nil, handle: handle,
-                            typing: typing, onType: typeKey)
+                            reference: (dirty && focus == .layout) ? model.settings : nil, handle: handle,
+                            typing: typing, flickGuide: focus == .flick, onType: typeKey)
                 .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
             if profile == .wide {
                 Text("内側画面は、実際のキーボードの幅（約669pt）で組んで、収まらないときは縮めて表示しています。").font(.caption2).foregroundStyle(.secondary)
+            }
+            if focus == .flick {
+                Text("黄色の線：方向の境目（傾きで回ります）　白い点線の円：この外まで動かすとフリック").font(.caption2).foregroundStyle(.secondary)
             }
             Toggle("このキーボードで試し打ちする", isOn: $typing)
                 .font(.footnote)
@@ -291,7 +299,7 @@ struct DesignScreen: View {
                 }
                 Spacer()
                 Button("破棄") {
-                    draft = model.settings
+                    draft = model.settings; focus = nil
                     history.removeAll()
                 }
                 .buttonStyle(.bordered)
@@ -350,7 +358,7 @@ struct DesignScreen: View {
     private func switchContext() {
         history.removeAll()
         model.select(profile: profile, grip: grip)
-        draft = model.settings
+        draft = model.settings; focus = nil
     }
 
     private var dirty: Bool { draft != model.settings }
@@ -372,6 +380,8 @@ struct DesignScreen: View {
             if history.count > 30 { history.removeFirst() }
         }
         lastPush = Date()
+        if s.tiltDeg != draft.tiltDeg || s.flickMinMM != draft.flickMinMM { focus = .flick }
+        else if s.cursorSpeed == draft.cursorSpeed && s.labelScale == draft.labelScale { focus = .layout }
         draft = s
     }
 
@@ -591,7 +601,7 @@ struct DesignScreen: View {
                     history.removeAll()
                     model.select(profile: profile, grip: grip)
                     model.reload()
-                    draft = model.settings
+                    draft = model.settings; focus = nil
                     backupMessage = "\(n)項目を戻しました"
                 } else {
                     backupMessage = "バックアップの形ではありません"

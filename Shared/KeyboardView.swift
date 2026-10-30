@@ -268,11 +268,54 @@ final class KeyboardView: UIView {
         }
 
         if showCorrection { drawCorrection(ctx) }
+        if showFlickGuide { drawFlickGuide(ctx) }
         updateGuides()
     }
 
     /// 補正を見る：キーごとの、指が実際に当たる位置のずれ（赤い点。ずれを3倍に大きくして描く）と、
     /// フリックの方向の境目（黄色が今の境目、白が標準の45°）を、キーの上に重ねる
+    /// フリックの方向の境目（設定の傾きを反映）と、フリックと判定する距離の円を、キーの上に重ねて出す（設定画面用）
+    var showFlickGuide = false {
+        didSet { if showFlickGuide != oldValue { setNeedsDisplay() } }
+    }
+
+    private func drawFlickGuide(_ ctx: CGContext) {
+        let toRad: CGFloat = .pi / 180
+        let radius: CGFloat = CGFloat(settings.flickMinMM * KeyboardSettings.ptPerMM)
+        for k in keys where k.def.isCharacter {
+            guard let chars = k.def.flickChars, chars.filter({ !$0.isEmpty }).count > 1 else { continue }
+            ctx.saveGState()
+            ctx.setLineCap(.round)
+            let tilt: CGFloat = textRotation(k) / toRad
+            let len: CGFloat = max(radius * 1.6, min(k.size.width, k.size.height) * 0.5)
+            // 方向の境目（斜めの4本）
+            ctx.setStrokeColor(UIColor.systemYellow.cgColor)
+            ctx.setLineWidth(1.5)
+            for i in 0..<4 {
+                let edge: CGFloat = 45 + 90 * CGFloat(i)
+                let a: CGFloat = (edge - tilt + CGFloat(settings.tiltDeg)) * toRad
+                ctx.move(to: CGPoint(x: k.center.x + cos(a) * radius, y: k.center.y - sin(a) * radius))
+                ctx.addLine(to: CGPoint(x: k.center.x + cos(a) * len, y: k.center.y - sin(a) * len))
+                ctx.strokePath()
+            }
+            // フリックと判定する距離（この円の外まで動かすとフリック）
+            ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.8).cgColor)
+            ctx.setLineDash(phase: 0, lengths: [3, 3])
+            ctx.strokeEllipse(in: CGRect(x: k.center.x - radius, y: k.center.y - radius, width: radius * 2, height: radius * 2))
+            ctx.setLineDash(phase: 0, lengths: [])
+            // 方向の名前（4方向の真ん中あたり）
+            let names = ["→", "↑", "←", "↓"]
+            for i in 0..<4 {
+                let a: CGFloat = (90 * CGFloat(i) - tilt + CGFloat(settings.tiltDeg)) * toRad
+                let p = CGPoint(x: k.center.x + cos(a) * (radius + len) / 2, y: k.center.y - sin(a) * (radius + len) / 2)
+                let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 11, weight: .bold), .foregroundColor: UIColor.white]
+                let sz = (names[i] as NSString).size(withAttributes: attrs)
+                (names[i] as NSString).draw(at: CGPoint(x: p.x - sz.width / 2, y: p.y - sz.height / 2), withAttributes: attrs)
+            }
+            ctx.restoreGState()
+        }
+    }
+
     var showCorrection = false {
         didSet { if showCorrection != oldValue { setNeedsDisplay() } }
     }
