@@ -234,7 +234,7 @@ struct DesignScreen: View {
                     offsetText = handle.container?.kv.offsetDescription ?? ""
                 }
             if showCorrection {
-                Text("赤い点：指が当たりやすい位置　黄色の線：方向の境目").font(.caption2).foregroundStyle(.secondary)
+                Text("白い＋：キーの中心　赤い点：指が当たりやすい位置（実際のずれを3倍に拡大して表示）　黄色の線：いまの方向の境目　薄い白の線：標準の45°。打って学習するまでは、ずれは0なので赤い点は中心に重なります").font(.caption2).foregroundStyle(.secondary)
                 HStack {
                     Text(offsetText).font(.caption).foregroundStyle(.secondary)
                     Spacer()

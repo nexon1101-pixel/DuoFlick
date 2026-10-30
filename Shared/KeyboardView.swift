@@ -345,6 +345,12 @@ final class KeyboardView: UIView {
                     }
                 }
             }
+            // キーの中心（白い＋）。赤い点は、ここから実際のずれを3倍にして描く
+            ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.8).cgColor)
+            ctx.setLineWidth(1)
+            ctx.move(to: CGPoint(x: k.center.x - 4, y: k.center.y)); ctx.addLine(to: CGPoint(x: k.center.x + 4, y: k.center.y))
+            ctx.move(to: CGPoint(x: k.center.x, y: k.center.y - 4)); ctx.addLine(to: CGPoint(x: k.center.x, y: k.center.y + 4))
+            ctx.strokePath()
             ctx.setStrokeColor(UIColor.systemRed.cgColor)
             ctx.setLineWidth(1.5)
             ctx.move(to: k.center)
