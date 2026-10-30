@@ -239,9 +239,9 @@ final class SettingsModel: ObservableObject {
         settings.save(profile: profile, grip: grip)
     }
 
-    func savePreset() {
+    func savePreset(_ s: KeyboardSettings? = nil) {
         let n = (1...9).first { i in !presets.contains { $0.name == "設定\(i)" } } ?? presets.count + 1
-        presets.insert(SavedPreset(name: "設定\(n)", settings: settings), at: 0)
+        presets.insert(SavedPreset(name: "設定\(n)", settings: s ?? settings), at: 0)
         if presets.count > 5 { presets.removeLast(presets.count - 5) }
         storePresets()
     }
