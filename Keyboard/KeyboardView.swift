@@ -253,7 +253,50 @@ final class KeyboardView: UIView {
             }
         }
 
+        if showCorrection { drawCorrection(ctx) }
         updateGuides()
+    }
+
+    /// 補正を見る：キーごとの、指が実際に当たる位置のずれ（赤い点。ずれを3倍に大きくして描く）と、
+    /// フリックの方向の境目（黄色が今の境目、白が標準の45°）を、キーの上に重ねる
+    var showCorrection = false {
+        didSet { if showCorrection != oldValue { setNeedsDisplay() } }
+    }
+
+    private func drawCorrection(_ ctx: CGContext) {
+        ensureCorrection()
+        let toRad: CGFloat = .pi / 180
+        for k in keys where k.def.isCharacter {
+            let off = effectiveOffset(k.def.id)
+            let tip = CGPoint(x: k.center.x + off.x * 3, y: k.center.y + off.y * 3)
+            ctx.saveGState()
+            ctx.setLineCap(.round)
+            if let chars = k.def.flickChars, chars.filter({ !$0.isEmpty }).count > 1 {
+                let len: CGFloat = min(k.size.width, k.size.height) * 0.42
+                let tilt: CGFloat = textRotation(k) / toRad
+                for i in 0..<4 {
+                    for (extra, color) in [(CGFloat(0), UIColor.white.withAlphaComponent(0.35)),
+                                           (flickBounds[i], UIColor.systemYellow)] {
+                        let edge: CGFloat = 45 + 90 * CGFloat(i) + extra
+                        let raw: CGFloat = (edge - tilt + CGFloat(settings.tiltDeg)) * toRad
+                        let dx = cos(raw), dy = -sin(raw)
+                        ctx.setStrokeColor(color.cgColor)
+                        ctx.setLineWidth(extra == 0 ? 1 : 1.5)
+                        ctx.move(to: CGPoint(x: k.center.x + dx * len * 0.3, y: k.center.y + dy * len * 0.3))
+                        ctx.addLine(to: CGPoint(x: k.center.x + dx * len, y: k.center.y + dy * len))
+                        ctx.strokePath()
+                    }
+                }
+            }
+            ctx.setStrokeColor(UIColor.systemRed.cgColor)
+            ctx.setLineWidth(1.5)
+            ctx.move(to: k.center)
+            ctx.addLine(to: tip)
+            ctx.strokePath()
+            ctx.setFillColor(UIColor.systemRed.cgColor)
+            ctx.fillEllipse(in: CGRect(x: tip.x - 3.5, y: tip.y - 3.5, width: 7, height: 7))
+            ctx.restoreGState()
+        }
     }
 
     private func updateGuides() {

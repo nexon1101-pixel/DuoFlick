@@ -1196,6 +1196,7 @@ final class KeyboardViewController: UIInputViewController {
             diagnose: { [weak self] in self?.composer.diagnostics() ?? "" },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
             onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
+            onShowCorrection: { [weak self] in self?.showCorrection() },
             importSystemDictionary: { [weak self] done in
                 self?.requestSupplementaryLexicon { lexicon in
                     DispatchQueue.main.async {
@@ -1221,6 +1222,19 @@ final class KeyboardViewController: UIInputViewController {
         showTop(UIHostingController(rootView: bar), height: adjustHeight)
     }
 
+    /// 補正を見る：キーの上に、ずれと方向の境目を重ねて出す
+    private func showCorrection() {
+        hidePanel()
+        let bar = CorrectionBar(
+            onBack: { [weak self] in
+                self?.keyboardView.showCorrection = false
+                self?.showSettings()
+            },
+            onClose: { [weak self] in self?.hideTop() })
+        showTop(UIHostingController(rootView: bar), height: adjustHeight)
+        keyboardView.showCorrection = true   // showTop が一度 hideTop を通るので、そのあとで立てる
+    }
+
     private func showTop(_ host: UIViewController, height: CGFloat) {
         hideTop()
         keyboardTop?.isActive = false
@@ -1244,6 +1258,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func hideTop() {
+        keyboardView.showCorrection = false
         guard let host = topHost else { return }
         keyboardTop?.isActive = false
         host.willMove(toParent: nil)

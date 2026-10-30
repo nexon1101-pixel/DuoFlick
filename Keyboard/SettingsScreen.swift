@@ -60,6 +60,7 @@ struct SettingsActions {
     let diagnose: () -> String
     let offsetText: () -> String
     let onResetOffset: () -> Void
+    let onShowCorrection: () -> Void
     /// iOSのユーザ辞書を取り込む。終わったら結果の文を渡す
     let importSystemDictionary: (@escaping (String) -> Void) -> Void
     /// バックアップを書き出す（共有画面を出す）。結果の文を返す
@@ -178,6 +179,7 @@ struct SettingsScreen: View {
                 Toggle("内側画面の片手持ちをiOS標準の配置にする", isOn: $model.settings.iosLayout)
                 Toggle("両手持ちで、かなを左右に分ける（ピンチでも切り替え）", isOn: $model.settings.splitKana)
                 Toggle("変換待ちの間は、ABC・地球儀など入力を中断するキーを止める", isOn: $model.settings.lockWhileComposing)
+                Button("補正を見る（キーの上に重ねて表示）", action: actions.onShowCorrection)
                 Button {
                     actions.onResetOffset()
                     offset = actions.offsetText()
@@ -461,5 +463,31 @@ struct AdjustBar: View {
 
     private func nudge(_ p: TuningParam, _ delta: Double) {
         model.settings[keyPath: p.keyPath] = TuningParams.clamp(p, model.settings[keyPath: p.keyPath] + delta)
+    }
+}
+
+/// 補正を見る間に出す帯
+struct CorrectionBar: View {
+    let onBack: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Button(action: onBack) {
+                    Label("設定", systemImage: "chevron.left").font(.footnote)
+                }
+                Spacer()
+                Button("完了", action: onClose)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+            Text("赤い点：指が当たりやすい位置（ずれを3倍に表示）\n黄色の線：今の方向の境目　白の線：標準の45°")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
