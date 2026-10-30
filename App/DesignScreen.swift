@@ -87,6 +87,7 @@ struct DesignScreen: View {
     @State private var showCorrection = false
     @State private var offsetText = ""
     @State private var trial = ""
+    @State private var tab: Tab = .layout
 
     var body: some View {
         GeometryReader { geo in
@@ -152,13 +153,14 @@ struct DesignScreen: View {
             if profile == .wide {
                 Text("内側画面は、実際のキーボードの幅（約669pt）で組んで、収まらないときは縮めて表示しています。").font(.caption2).foregroundStyle(.secondary)
             }
-            Toggle("補正を見る（赤い点：当たりやすい位置、黄色の線：方向の境目）", isOn: $showCorrection)
+            Toggle("補正を見る", isOn: $showCorrection)
                 .font(.footnote)
                 .onChange(of: showCorrection) { _, on in
                     if on { handle.container?.kv.reloadCorrection() }
                     offsetText = handle.container?.kv.offsetDescription ?? ""
                 }
             if showCorrection {
+                Text("赤い点：指が当たりやすい位置　黄色の線：方向の境目").font(.caption2).foregroundStyle(.secondary)
                 HStack {
                     Text(offsetText).font(.caption).foregroundStyle(.secondary)
                     Spacer()
@@ -188,23 +190,44 @@ struct DesignScreen: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground))
     }
 
+    private enum Tab: String, CaseIterable, Identifiable {
+        case layout = "配置", input = "入力", look = "見た目", data = "データ"
+        var id: String { rawValue }
+    }
+
     private var settingsForm: some View {
-        Form {
-            if !SharedStore.isShared {
-                Section {
-                    Text("キーボードと設定を共有できていません。ここで変えても、キーボードには反映されません（ホームの「共有の状態」を見てください）。")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+        VStack(spacing: 0) {
+            Picker("項目", selection: $tab) {
+                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            Form {
+                if !SharedStore.isShared {
+                    Section {
+                        Text("キーボードと設定を共有できていません。ここで変えても、キーボードには反映されません（ホームの「共有の状態」を見てください）。")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                switch tab {
+                case .layout:
+                    shapeSection
+                    sizeSection
+                    detailSection
+                case .input:
+                    inputSection
+                    convertSection
+                case .look:
+                    lookSection
+                case .data:
+                    presetSection
+                    otherSection
                 }
             }
-            shapeSection
-            sizeSection
-            inputSection
-            lookSection
-            presetSection
-            otherSection
+            .environment(\.defaultMinListRowHeight, 40)
         }
-        .environment(\.defaultMinListRowHeight, 40)
     }
 
     private func switchContext() {
@@ -231,10 +254,10 @@ struct DesignScreen: View {
         Binding(get: { model.settings[keyPath: kp] }, set: { v in edit { $0[keyPath: kp] = v } })
     }
 
-    // MARK: - 形
+    // MARK: - 配置
 
     private var shapeSection: some View {
-        Section("形") {
+        Section {
             Picker("形", selection: bind(\.shape)) {
                 Text("両手").tag(KeyboardShape.standard)
                 Text("片手・格子").tag(KeyboardShape.rightGrid)
@@ -249,41 +272,60 @@ struct DesignScreen: View {
                 .pickerStyle(.segmented)
             }
             if model.settings.shape == .fan {
-                Toggle("文字を扇に沿わせる", isOn: bind(\.followFan))
+                toggleRow("文字を扇に沿わせる", "文字とフリックの向きを、キーの傾きに合わせます", bind(\.followFan))
+            }
+        } header: {
+            Text("1. 形を選ぶ")
+        }
+    }
+
+    /// よく使う調整。残りは「細かい調整」にまとめる
+    private static let mainIDs = ["w", "h", "r", "a"]
+
+    private func params(main: Bool) -> [TuningParam] {
+        TuningParams.all.filter {
+            $0.shapes.contains(model.settings.shape) && $0.id != "l" && (Self.mainIDs.contains($0.id) == main)
+        }
+    }
+
+    private var sizeSection: some View {
+        Section {
+            ForEach(params(main: true)) { sliderRow($0) }
+        } header: {
+            Text("2. 大きさを合わせる")
+        } footer: {
+            Text("上のキーボードがすぐに変わります。")
+        }
+    }
+
+    private var detailSection: some View {
+        Section {
+            DisclosureGroup("細かい調整（余白・フリック距離・傾きなど）") {
+                ForEach(params(main: false)) { sliderRow($0) }
             }
         }
     }
 
-    // MARK: - 大きさと位置
-
-    private var sizeSection: some View {
-        Section {
-            ForEach(TuningParams.all.filter { $0.shapes.contains(model.settings.shape) }) { p in
-                VStack(spacing: 2) {
-                    HStack {
-                        Text(p.label)
-                        Spacer()
-                        Text(TuningParams.format(p, model.settings[keyPath: p.keyPath]))
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack(spacing: 10) {
-                        Button { nudge(p, -p.step) } label: {
-                            Image(systemName: "minus.circle.fill").font(.title3)
-                        }
-                        .buttonStyle(.borderless)
-                        Slider(value: bind(p.keyPath), in: p.range, step: p.step)
-                        Button { nudge(p, p.step) } label: {
-                            Image(systemName: "plus.circle.fill").font(.title3)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
+    private func sliderRow(_ p: TuningParam) -> some View {
+        VStack(spacing: 2) {
+            HStack {
+                Text(p.label)
+                Spacer()
+                Text(TuningParams.format(p, model.settings[keyPath: p.keyPath]))
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-        } header: {
-            Text("大きさと位置")
-        } footer: {
-            Text("上のキーボードがすぐに変わります。")
+            HStack(spacing: 10) {
+                Button { nudge(p, -p.step) } label: {
+                    Image(systemName: "minus.circle.fill").font(.title3)
+                }
+                .buttonStyle(.borderless)
+                Slider(value: bind(p.keyPath), in: p.range, step: p.step)
+                Button { nudge(p, p.step) } label: {
+                    Image(systemName: "plus.circle.fill").font(.title3)
+                }
+                .buttonStyle(.borderless)
+            }
         }
     }
 
@@ -291,29 +333,53 @@ struct DesignScreen: View {
         edit { $0[keyPath: p.keyPath] = TuningParams.clamp(p, $0[keyPath: p.keyPath] + delta) }
     }
 
+    /// 題名と、短い説明をつけたトグル
+    private func toggleRow(_ title: String, _ caption: String, _ binding: Binding<Bool>) -> some View {
+        Toggle(isOn: binding) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(caption).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
     // MARK: - 入力
 
     private var inputSection: some View {
-        Section("入力") {
-            Toggle("押したときの振動", isOn: bind(\.haptics))
-            Toggle("続けてタップで文字を切り替え", isOn: bind(\.toggleTap))
-            Toggle("ずれ補正（押す位置と斜めのくせ）", isOn: bind(\.autoCorrect))
-            Toggle("打ち間違いの候補（試験的）", isOn: bind(\.typoCorrection))
-            Toggle("内側画面の片手持ちをiOS標準の配置にする", isOn: bind(\.iosLayout))
-            Toggle("両手持ちで、かなを左右に分ける", isOn: bind(\.splitKana))
-            Toggle("変換待ちの間は、ABC・地球儀など入力を中断するキーを止める", isOn: bind(\.lockWhileComposing))
+        Section("打ち心地") {
+            toggleRow("振動", "キーを押したときに震えます", bind(\.haptics))
+            toggleRow("続けてタップで切り替え", "同じキーを続けて押すと あ→い→う と変わります", bind(\.toggleTap))
+            toggleRow("ずれ補正", "押す位置と斜めのくせを覚えて、判定を直します", bind(\.autoCorrect))
+            toggleRow("変換待ちは入力を中断するキーを止める", "読みに下線が出ている間、ABC・地球儀などを押せなくします", bind(\.lockWhileComposing))
+        }
+    }
+
+    private var convertSection: some View {
+        Group {
+            Section("配置の切り替え") {
+                toggleRow("内側画面の片手持ちをiOS標準の配置にする", "左にキー、真ん中に候補、右にかなを並べます", bind(\.iosLayout))
+                toggleRow("両手持ちで、かなを左右に分ける", "ピンチアウト／ピンチインでも切り替えられます", bind(\.splitKana))
+            }
+            Section("変換") {
+                toggleRow("打ち間違いの候補（試験的）", "打ち間違いを直した候補も出します", bind(\.typoCorrection))
+            }
         }
     }
 
     // MARK: - 見た目
 
     private var lookSection: some View {
-        Section("見た目") {
-            Picker("配色（ライト）", selection: bind(\.themeLight)) {
-                ForEach(KeyTheme.all, id: \.id) { Text($0.name).tag($0.id) }
+        Group {
+            Section("配色") {
+                Picker("ライトモード", selection: bind(\.themeLight)) {
+                    ForEach(KeyTheme.all, id: \.id) { Text($0.name).tag($0.id) }
+                }
+                Picker("ダークモード", selection: bind(\.themeDark)) {
+                    ForEach(KeyTheme.all, id: \.id) { Text($0.name).tag($0.id) }
+                }
             }
-            Picker("配色（ダーク）", selection: bind(\.themeDark)) {
-                ForEach(KeyTheme.all, id: \.id) { Text($0.name).tag($0.id) }
+            if let p = TuningParams.all.first(where: { $0.id == "l" }) {
+                Section("文字") { sliderRow(p) }
             }
         }
     }
