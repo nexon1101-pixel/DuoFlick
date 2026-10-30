@@ -172,3 +172,6 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - iloader（Windows）で SideStore（Stable）を入れ、ペアリングファイルも置いた。LocalDevVPN（App Store）を入れて接続。SideStore の Apple ID サインインが -80045（Anisette 関係、SideStore 側の既知の不具合）で失敗したが、時間をあけて再試行して通った。通らないときは Settings → User Customizations で On-Device Anisette をオフにして再起動、Anisette Servers で Jkcoxson を選ぶ
 - ビルドの最後に、ipa を GitHub の「latest」リリースにも置く（毎回上書き、build.yml の Publish ipa to release）。iPhone の Safari で開いて保存し、SideStore の「＋」から入れる
 - 次にやること：SideStore から DuoFlick を入れ直す → entitlements（App Groups）と仮署名 → 設定の保存先を共有に → 新しい設定画面
+
+## v0.28.12：アイコン
+- アプリのアイコンは App/Assets.xcassets/AppIcon.appiconset/AppIcon.png（1024×1024、白いキーの「D」と上向きの矢印、オレンジ〜ピンクの背景）。自作の絵で、Pillow で描いた。描き直すときの元の案（A 十字のフリック・B 扇形・C 今のもの）は作業用の場所にあり、リポジトリには入れていない
