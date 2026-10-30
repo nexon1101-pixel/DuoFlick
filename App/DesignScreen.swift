@@ -19,12 +19,10 @@ final class PreviewContainer: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// 組むときの幅と、画面に収めるための縮小率
+    /// 組むときの幅（実機のキーボードの幅に近い値）と、画面に収めるための縮小率
     static func metrics(profile: ScreenProfile, available: CGFloat) -> (width: CGFloat, scale: CGFloat) {
-        let avail = max(available, 100)
-        if profile == .narrow { return (min(avail, 480), 1) }
-        let w = max(avail, 600)
-        return (w, avail / w)
+        let w: CGFloat = profile == .narrow ? 390 : 669
+        return (w, min(1, max(available, 100) / w))
     }
 
     override func layoutSubviews() {
@@ -75,53 +73,23 @@ struct DesignScreen: View {
     @State private var backupMessage = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Picker("画面", selection: $profile) {
-                    Text("外側画面").tag(ScreenProfile.narrow)
-                    Text("内側画面").tag(ScreenProfile.wide)
+        GeometryReader { geo in
+            if geo.size.width >= 700 {
+                // 広い画面（Duo の内側画面など）は、左にプレビュー、右に調整を並べる
+                HStack(spacing: 0) {
+                    ScrollView { previewPane }
+                        .frame(width: min(geo.size.width * 0.5, 560))
+                        .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    Divider()
+                    settingsForm
                 }
-                .pickerStyle(.segmented)
-                HStack(spacing: 8) {
-                    Picker("持ち方", selection: $grip) {
-                        Text("片手持ち").tag(Grip.one)
-                        Text("両手持ち").tag(Grip.two)
-                    }
-                    .pickerStyle(.segmented)
-                    Picker("面", selection: $mode) {
-                        Text("かな").tag(InputMode.kana)
-                        Text("英字").tag(InputMode.qwerty)
-                        Text("記号").tag(InputMode.symbol)
-                    }
-                    .pickerStyle(.segmented)
-                }
-                KeyboardPreview(settings: model.settings, grip: grip, mode: mode, profile: profile)
-                    .frame(maxWidth: .infinity)
-                    .fixedSize(horizontal: false, vertical: true)
-                if profile == .wide {
-                    Text("内側画面は、画面に合わせて縮めて表示しています。").font(.caption2).foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 0) {
+                    previewPane
+                    Divider()
+                    settingsForm
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
-            Divider()
-            Form {
-                if !SharedStore.isShared {
-                    Section {
-                        Text("キーボードと設定を共有できていません。ここで変えても、キーボードには反映されません（ホームの「共有の状態」を見てください）。")
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                    }
-                }
-                shapeSection
-                sizeSection
-                inputSection
-                lookSection
-                presetSection
-                otherSection
-            }
-            .environment(\.defaultMinListRowHeight, 40)
         }
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.inline)
@@ -138,6 +106,57 @@ struct DesignScreen: View {
         .onAppear { model.select(profile: profile, grip: grip) }
         .onChange(of: profile) { _, _ in switchContext() }
         .onChange(of: grip) { _, _ in switchContext() }
+    }
+
+    private var previewPane: some View {
+        VStack(spacing: 8) {
+            Picker("画面", selection: $profile) {
+                Text("外側画面").tag(ScreenProfile.narrow)
+                Text("内側画面").tag(ScreenProfile.wide)
+            }
+            .pickerStyle(.segmented)
+            HStack(spacing: 8) {
+                Picker("持ち方", selection: $grip) {
+                    Text("片手持ち").tag(Grip.one)
+                    Text("両手持ち").tag(Grip.two)
+                }
+                .pickerStyle(.segmented)
+                Picker("面", selection: $mode) {
+                    Text("かな").tag(InputMode.kana)
+                    Text("英字").tag(InputMode.qwerty)
+                    Text("記号").tag(InputMode.symbol)
+                }
+                .pickerStyle(.segmented)
+            }
+            KeyboardPreview(settings: model.settings, grip: grip, mode: mode, profile: profile)
+                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+            if profile == .wide {
+                Text("内側画面は、実際のキーボードの幅（約669pt）で組んで、収まらないときは縮めて表示しています。").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+    }
+
+    private var settingsForm: some View {
+        Form {
+            if !SharedStore.isShared {
+                Section {
+                    Text("キーボードと設定を共有できていません。ここで変えても、キーボードには反映されません（ホームの「共有の状態」を見てください）。")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            }
+            shapeSection
+            sizeSection
+            inputSection
+            lookSection
+            presetSection
+            otherSection
+        }
+        .environment(\.defaultMinListRowHeight, 40)
     }
 
     private func switchContext() {
