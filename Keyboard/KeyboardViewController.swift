@@ -609,7 +609,7 @@ final class KeyboardViewController: UIInputViewController {
     /// 再変換できる読み：ひらがな・カタカナだけならそのまま（ひらがなにする）。漢字まじりは、以前このキーボードで選んだ語だけ
     private func reconversionReading(_ text: String) -> String? {
         let hira = text.applyingTransform(.hiraganaToKatakana, reverse: true) ?? text
-        if hira.allSatisfy({ ("ぁ"..."ゖ").contains($0) || $0 == "ー" }) { return hira }
+        if Composer.isHiragana(hira) { return hira }
         return composer.readingChosen(for: text)
     }
 

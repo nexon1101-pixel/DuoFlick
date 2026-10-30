@@ -138,6 +138,11 @@ final class Composer {
 
     private static let textChecker = UITextChecker()
 
+    /// ひらがな（と長音）だけか
+    static func isHiragana(_ s: String) -> Bool {
+        !s.isEmpty && s.unicodeScalars.allSatisfy { (0x3041...0x3096).contains($0.value) || $0.value == 0x30FC }
+    }
+
     /// 読みで出す顔文字
     private static let kaomoji: [String: [String]] = [
         "かお": ["(^_^)", "(・ω・)", "(´・ω・`)", "(^o^)"],
@@ -621,7 +626,7 @@ final class Composer {
                     extras.append(w)
                 }
             }
-        } else if reading.count <= 24, reading.allSatisfy({ ("ぁ"..."ゖ").contains($0) || $0 == "ー" }) {
+        } else if reading.count <= 24, Composer.isHiragana(reading) {
             // ひらがなだけ：半角カナを、候補の最後に足す
             let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
             if let half = kata.applyingTransform(.fullwidthToHalfwidth, reverse: false), half != kata, !have.contains(half) {
