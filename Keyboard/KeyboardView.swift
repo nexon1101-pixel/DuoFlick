@@ -450,7 +450,8 @@ final class KeyboardView: UIView {
     private var lastDeleteTime = Date.distantPast
     private static let retypeWindow: TimeInterval = 6
 
-    private func resetFlickHistory() {
+    /// 変換候補・予測候補を選んだときなど、打った文字と画面の文字が対応しなくなったときに呼ぶ
+    func resetFlickHistory() {
         flickHistory.removeAll()
         pendingDeleted.removeAll()
     }

@@ -974,6 +974,7 @@ final class KeyboardViewController: UIInputViewController {
     private func commitCandidate(_ index: Int) {
         let reading = composer.reading
         guard let text = composer.commit(candidateAt: index) else { return }
+        keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
         insertCommitted(text)
         if composer.isEmpty {
             lastCommit = (text, reading)
@@ -988,6 +989,7 @@ final class KeyboardViewController: UIInputViewController {
         guard !composer.isEmpty else { return }
         let reading = composer.reading
         let text = composer.commitAll()
+        keyboardView.resetFlickHistory()
         insertCommitted(text)
         lastCommit = (text, reading)
         refreshBar()
