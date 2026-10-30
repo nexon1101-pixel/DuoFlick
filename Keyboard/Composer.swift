@@ -106,14 +106,10 @@ final class Composer {
     private var extras: [String] = []
     private var extraAt = 2
 
-    /// 診断用（一時）：英字の候補が出ない理由を、候補の最後に出す
-    private var debugText = ""
-
     private func withExtra(_ texts: [String]) -> [String] {
-        guard !extras.isEmpty else { return debugText.isEmpty ? texts : texts + [debugText] }
+        guard !extras.isEmpty else { return texts }
         var t = texts
         t.insert(contentsOf: extras, at: min(extraAt, t.count))
-        if !debugText.isEmpty { t.append(debugText) }
         return t
     }
 
@@ -139,8 +135,6 @@ final class Composer {
     private static let punctuationVariants: [Character: [String]] = [
         "、": ["，", ",", "､"], "。": ["．", ".", "｡"], "？": ["?"], "！": ["!"], "「": ["｢"], "」": ["｣"],
     ]
-
-    private static let textChecker = UITextChecker()
 
     /// ひらがな（と長音）だけか
     static func isHiragana(_ s: String) -> Bool {
@@ -597,7 +591,6 @@ final class Composer {
         requestOptions.needTypoCorrection = typoCorrection
         candidates = prioritizeChosen(converter.requestCandidates(target, options: requestOptions).mainResults)
         extras = []
-        debugText = "診断 raw=\(rawRoman) valid=\(rawValid) seg=\(isSegmented) 読み=\(composing.convertTarget) 位置=\(composing.convertTargetCursorPosition)"
         guard !isSegmented else { return }
         let reading = composing.convertTarget
         let have = Set(candidates.map(\.text))
@@ -625,14 +618,6 @@ final class Composer {
             // 先頭だけ大文字にした形も（例：hello → Hello）
             let cap = rawRoman.prefix(1).uppercased() + rawRoman.dropFirst()
             if cap != rawRoman, !have.contains(cap) { extras.append(cap) }
-            // 打ちかけの英単語の補完も出す（iOS標準の英単語補完。2文字以上のとき）
-            if rawRoman.count >= 2 {
-                let range = NSRange(location: 0, length: (rawRoman as NSString).length)
-                let words = Self.textChecker.completions(forPartialWordRange: range, in: rawRoman, language: "en_US") ?? []
-                for w in words.prefix(8) where w.lowercased() != rawRoman.lowercased() && !have.contains(w) && !extras.contains(w) {
-                    extras.append(w)
-                }
-            }
         } else if reading.count <= 24, Composer.isHiragana(reading) {
             // ひらがなだけ：半角カナを、候補の最後に足す
             let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
