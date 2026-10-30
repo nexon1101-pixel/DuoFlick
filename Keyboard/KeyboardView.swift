@@ -341,22 +341,47 @@ final class KeyboardView: UIView {
     // MARK: - ずれの自動補正
 
     private static let offsetKey = "DuoFlick.touchOffset.v1"
-    private(set) var touchOffset: CGPoint = {
-        let a = UserDefaults.standard.array(forKey: KeyboardView.offsetKey) as? [Double] ?? [0, 0]
-        return a.count == 2 ? CGPoint(x: a[0], y: a[1]) : .zero
-    }()
+    private(set) var touchOffset: CGPoint = .zero
+
+    /// 補正は、画面（外側・内側）と持ち方（片手・両手）の組み合わせごとに別に持つ
+    private var correctionSuffix: String { ScreenProfile.forWidth(layoutWidth).rawValue + "." + grip.rawValue }
+    private var loadedSuffix: String?
+    private func ckey(_ base: String) -> String { base + "." + correctionSuffix }
+
+    /// 補正の保存値を読む。組み合わせごとの値がまだなく、以前の（共通の）値が残っていれば、最初に開いた組み合わせに引き継ぐ
+    private func loadStored(_ base: String) -> Any? {
+        let d = UserDefaults.standard
+        if let v = d.object(forKey: ckey(base)) { return v }
+        if let v = d.object(forKey: base) {
+            d.set(v, forKey: ckey(base))
+            d.removeObject(forKey: base)
+            return v
+        }
+        return nil
+    }
+
+    /// 画面や持ち方が変わっていたら、その組み合わせの補正を読み直す
+    private func ensureCorrection() {
+        let suffix = correctionSuffix
+        guard loadedSuffix != suffix else { return }
+        loadedSuffix = suffix
+        let o = loadStored(Self.offsetKey) as? [Double] ?? [0, 0]
+        touchOffset = o.count == 2 ? CGPoint(x: o[0], y: o[1]) : .zero
+        let d = loadStored(Self.keyOffsetsKey) as? [String: [Double]] ?? [:]
+        keyDeltas = d.compactMapValues { $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil }
+        let b = loadStored(Self.boundsKey) as? [Double] ?? []
+        flickBounds = b.count == 4 ? b.map { CGFloat($0) } : [0, 0, 0, 0]
+        resetFlickHistory()
+    }
 
     /// キーごとの、全体のずれからの差（親指が届きにくい端や下の段は、ずれ方が違うため）
     private static let keyOffsetsKey = "DuoFlick.keyOffsets.v1"
-    private var keyDeltas: [String: CGPoint] = {
-        let d = UserDefaults.standard.dictionary(forKey: KeyboardView.keyOffsetsKey) as? [String: [Double]] ?? [:]
-        return d.compactMapValues { $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil }
-    }()
+    private var keyDeltas: [String: CGPoint] = [:]
     private static let deltaLimitMM: CGFloat = 2
 
     private func saveKeyDeltas() {
         let d = keyDeltas.mapValues { [Double($0.x), Double($0.y)] }
-        UserDefaults.standard.set(d, forKey: Self.keyOffsetsKey)
+        UserDefaults.standard.set(d, forKey: ckey(Self.keyOffsetsKey))
     }
 
     /// そのキーを押すときの、実際に使うずれ（全体のずれ＋キーごとの差）
@@ -385,7 +410,7 @@ final class KeyboardView: UIView {
         x = min(max(x, -limit), limit)
         y = min(max(y, -limit), limit)
         touchOffset = CGPoint(x: x, y: y)
-        UserDefaults.standard.set([Double(x), Double(y)], forKey: Self.offsetKey)
+        UserDefaults.standard.set([Double(x), Double(y)], forKey: ckey(Self.offsetKey))
         // キーごとの差：このキーでは、全体のずれよりどれだけ余計にずれたか
         moveDelta(k.def.id, toward: CGPoint(x: dx - x, y: dy - y), rate: 0.05)
         saveKeyDeltas()
@@ -405,16 +430,18 @@ final class KeyboardView: UIView {
     }
 
     func resetOffset() {
+        ensureCorrection()
         touchOffset = .zero
         keyDeltas = [:]
-        UserDefaults.standard.removeObject(forKey: Self.keyOffsetsKey)
-        UserDefaults.standard.removeObject(forKey: Self.offsetKey)
+        UserDefaults.standard.removeObject(forKey: ckey(Self.keyOffsetsKey))
+        UserDefaults.standard.removeObject(forKey: ckey(Self.offsetKey))
         flickBounds = [0, 0, 0, 0]
-        UserDefaults.standard.removeObject(forKey: Self.boundsKey)
+        UserDefaults.standard.removeObject(forKey: ckey(Self.boundsKey))
     }
 
     /// 調整バーに出す、今の補正量（mm）
     var offsetDescription: String {
+        ensureCorrection()
         let mx = Double(touchOffset.x) / KeyboardSettings.ptPerMM
         let my = Double(touchOffset.y) / KeyboardSettings.ptPerMM
         let moved = flickBounds.filter { abs($0) >= 1 }.count
@@ -477,10 +504,7 @@ final class KeyboardView: UIView {
 
     private static let boundsKey = "DuoFlick.flickBounds.v1"
     /// 上下左右の境目（右上・左上・左下・右下）を、標準の45°からどれだけずらすか（度）
-    private(set) var flickBounds: [CGFloat] = {
-        let a = UserDefaults.standard.array(forKey: KeyboardView.boundsKey) as? [Double] ?? []
-        return a.count == 4 ? a.map { CGFloat($0) } : [0, 0, 0, 0]
-    }()
+    private(set) var flickBounds: [CGFloat] = [0, 0, 0, 0]
 
     /// 打った文字キーの記録（タップは方向なし）
     private struct FlickRecord {
@@ -557,13 +581,14 @@ final class KeyboardView: UIView {
         var b: CGFloat = flickBounds[i] + (target - edge) * 0.35
         b = min(max(b, -20), 20)
         flickBounds[i] = b
-        UserDefaults.standard.set(flickBounds.map { Double($0) }, forKey: Self.boundsKey)
+        UserDefaults.standard.set(flickBounds.map { Double($0) }, forKey: ckey(Self.boundsKey))
     }
 
 
     // MARK: - タッチ
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        ensureCorrection()
         for t in touches {
             let p = t.location(in: self)
             // ずれの自動補正：いつもずれる方向の分だけ、押した位置を戻してから判定する
