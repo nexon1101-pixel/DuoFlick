@@ -589,12 +589,28 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         let proxy = textDocumentProxy
+        // 文字を選択しているときは、選んだ文字を読みに戻して、変換し直す
+        if let sel = proxy.selectedText, !sel.isEmpty, sel.count <= 40, let reading = reconversionReading(sel) {
+            proxy.deleteBackward()   // 選択している文字が消える
+            lastCommit = nil
+            composer.clearPredictions()
+            composer.restore(reading: reading)
+            updateComposition()
+            return
+        }
         guard let last = lastCommit, let before = proxy.documentContextBeforeInput,
               before.hasSuffix(last.text) else { return }
         for _ in 0..<last.text.count { proxy.deleteBackward() }
         lastCommit = nil
         composer.restore(reading: last.reading)
         updateComposition()
+    }
+
+    /// 再変換できる読み：ひらがな・カタカナだけならそのまま（ひらがなにする）。漢字まじりは、以前このキーボードで選んだ語だけ
+    private func reconversionReading(_ text: String) -> String? {
+        let hira = text.applyingTransform(.hiraganaToKatakana, reverse: true) ?? text
+        if hira.allSatisfy({ ("ぁ"..."ゖ").contains($0) || $0 == "ー" }) { return hira }
+        return composer.readingChosen(for: text)
     }
 
     /// 空白キー長押しの左右：入力中なら文節の区切りを動かし、そうでなければカーソルを動かす
