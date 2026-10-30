@@ -179,14 +179,14 @@ final class SettingsModel: ObservableObject {
     }
     @Published private(set) var profile: ScreenProfile = .narrow
     @Published private(set) var grip: Grip
-    private static let gripKey = "DuoFlick.grip.v1"
+    static let gripKey = "DuoFlick.grip.v1"
 
     /// 設定画面に出す名前（例：外側画面・片手持ち）
     var title: String { "\(profile.title)・\(grip.title)" }
     @Published private(set) var presets: [SavedPreset] = []
     var onChange: ((KeyboardSettings) -> Void)?
 
-    private static let presetKey = "DuoFlick.presets.v1"
+    static let presetKey = "DuoFlick.presets.v1"
 
     init() {
         let g = Grip(rawValue: SharedStore.defaults.string(forKey: Self.gripKey) ?? "") ?? .one
@@ -204,6 +204,26 @@ final class SettingsModel: ObservableObject {
         profile = p
         settings = KeyboardSettings.load(profile: p, grip: grip)
         onChange?(settings)
+    }
+
+    /// アプリ本体の設定画面で、画面と持ち方を選ぶ（キーボードが使っている持ち方は変えない）
+    func select(profile p: ScreenProfile, grip g: Grip) {
+        profile = p
+        grip = g
+        settings = KeyboardSettings.load(profile: p, grip: g)
+    }
+
+    /// アプリ本体で変えた設定を、保存先から読み直す（キーボードを開いたときに呼ぶ）
+    func reload() {
+        SharedStore.defaults.synchronize()
+        let g = Grip(rawValue: SharedStore.defaults.string(forKey: Self.gripKey) ?? "") ?? grip
+        grip = g
+        let s = KeyboardSettings.load(profile: profile, grip: g)
+        if s != settings { settings = s }
+        if let data = SharedStore.defaults.data(forKey: Self.presetKey),
+           let list = try? JSONDecoder().decode([SavedPreset].self, from: data) {
+            presets = list
+        }
     }
 
     /// 片手持ち⇄両手持ちを切り替える

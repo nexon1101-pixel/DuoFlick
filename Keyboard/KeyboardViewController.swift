@@ -107,6 +107,9 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         view.transform = .identity
         view.alpha = 1
+        // アプリ本体の設定画面で変えた設定を読み直す
+        model.reload()
+        keyboardView.grip = model.grip
         applyKeyboardType()
         haptic.prepare()
         flickHaptic.prepare()
