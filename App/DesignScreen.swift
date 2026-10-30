@@ -129,29 +129,35 @@ struct DesignScreen: View {
     @State private var offsetText = ""
     @State private var trial = ""
     @State private var tab: Tab = .layout
+    @State private var forceOpen = false
     /// 編集中の設定。「保存して反映」を押すまで、キーボードには渡さない
     @State private var draft = KeyboardSettings()
 
     var body: some View {
         GeometryReader { geo in
-            if geo.size.width >= 700 {
-                // 広い画面（Duo の内側画面など）は、左にプレビュー、右に調整を並べる
-                HStack(spacing: 0) {
-                    ScrollView { previewPane }
-                        .frame(width: min(geo.size.width * 0.5, 560))
-                        .background(Color(uiColor: .secondarySystemGroupedBackground))
-                    Divider()
-                    settingsForm
-                }
+            if geo.size.width <= 480 && !forceOpen {
+                // 外側画面（折りたたんだ状態）では、プレビューと調整が入りきらない
+                foldedNotice
             } else {
                 VStack(spacing: 0) {
-                    previewPane
-                    Divider()
-                    settingsForm
+                    if geo.size.width >= 700 {
+                        // 広い画面（Duo の内側画面を横にした状態など）は、左にプレビュー、右に調整を並べる
+                        HStack(spacing: 0) {
+                            ScrollView { previewPane }
+                                .frame(width: min(geo.size.width * 0.5, 560))
+                                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                            Divider()
+                            settingsForm
+                        }
+                    } else {
+                        previewPane
+                        Divider()
+                        settingsForm
+                    }
+                    saveBar
                 }
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -235,6 +241,25 @@ struct DesignScreen: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
+    }
+
+    private var foldedNotice: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "rectangle.portrait.arrowtriangle.2.outward")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+            Text("Duo を開いてください")
+                .font(.title3.weight(.semibold))
+            Text("この設定は、Duo を開いた状態（内側画面）で使う前提です。いまは外側画面で開いていて、プレビューと調整が入りきりません。Duo を開くと、そのまま設定を続けられます。")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("外側画面のまま開く") { forceOpen = true }
+                .buttonStyle(.bordered)
+                .padding(.top, 6)
+        }
+        .padding(.horizontal, 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var saveBar: some View {
