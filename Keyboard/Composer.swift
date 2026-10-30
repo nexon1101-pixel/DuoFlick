@@ -106,10 +106,14 @@ final class Composer {
     private var extras: [String] = []
     private var extraAt = 2
 
+    /// 診断用（一時）：英字の候補が出ない理由を、候補の最後に出す
+    private var debugText = ""
+
     private func withExtra(_ texts: [String]) -> [String] {
-        guard !extras.isEmpty else { return texts }
+        guard !extras.isEmpty else { return debugText.isEmpty ? texts : texts + [debugText] }
         var t = texts
         t.insert(contentsOf: extras, at: min(extraAt, t.count))
+        if !debugText.isEmpty { t.append(debugText) }
         return t
     }
 
@@ -593,6 +597,7 @@ final class Composer {
         requestOptions.needTypoCorrection = typoCorrection
         candidates = prioritizeChosen(converter.requestCandidates(target, options: requestOptions).mainResults)
         extras = []
+        debugText = "診断 raw=\(rawRoman) valid=\(rawValid) seg=\(isSegmented) 読み=\(composing.convertTarget) 位置=\(composing.convertTargetCursorPosition)"
         guard !isSegmented else { return }
         let reading = composing.convertTarget
         let have = Set(candidates.map(\.text))
