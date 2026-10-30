@@ -32,14 +32,17 @@ enum SharedStore {
         return d
     }()
 
-    /// 共有に切り替わった最初の一回だけ、これまでの保存先（DuoFlick.* の設定）を引き継ぐ
+    /// 共有に切り替わった最初の一回だけ、これまでの保存先（DuoFlick.* の設定）を引き継ぐ。
+    /// アプリ本体とキーボードは、それぞれ別の保存先を持っているので、印は共有の場所ではなく、
+    /// 各自の保存先に付ける（共有に付けると、先に開いたほうだけが引き継いで、もう一方の設定が消える）
     private static func migrate(into d: UserDefaults) {
-        let flag = "DuoFlick.sharedMigrated.v1"
-        guard !d.bool(forKey: flag) else { return }
-        for (key, value) in UserDefaults.standard.dictionaryRepresentation() where key.hasPrefix("DuoFlick.") {
+        let own = UserDefaults.standard
+        let flag = "DuoFlick.sharedMigrated.v2"
+        guard !own.bool(forKey: flag) else { return }
+        for (key, value) in own.dictionaryRepresentation() where key.hasPrefix("DuoFlick.") {
             if d.object(forKey: key) == nil { d.set(value, forKey: key) }
         }
-        d.set(true, forKey: flag)
+        own.set(true, forKey: flag)
     }
 
     /// 状態の説明（アプリのホームに出す）
