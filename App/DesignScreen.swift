@@ -142,13 +142,15 @@ struct DesignScreen: View {
                 VStack(spacing: 0) {
                     if geo.size.width >= 700 {
                         // 広い画面（Duo の内側画面を横にした状態など）は、左にプレビュー、右に調整を並べる
-                        HStack(spacing: 0) {
+                        HStack(spacing: 20) {
                             ScrollView { previewPane }
                                 .frame(width: min(geo.size.width * 0.5, 560))
                                 .background(Color(uiColor: .secondarySystemGroupedBackground))
-                            Divider()
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
                             settingsForm
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
                     } else {
                         previewPane
                         Divider()
