@@ -613,7 +613,9 @@ final class Composer {
             for v in Self.numberVariants(reading) where !have.contains(v) && !extras.contains(v) { extras.append(v) }
         } else if rawValid, !rawRoman.isEmpty, rawRoman.allSatisfy({ $0.isASCII }),
                   rawRoman != reading, !have.contains(rawRoman) {
-            extraAt = 2
+            // 読みにかなにならなかった英字が残っているとき（例：さいk）は、英語として打っている可能性が高いので、先頭のすぐ後ろに出す
+            let hasStrayLetter = reading.contains { $0.isASCII && $0.isLetter }
+            extraAt = hasStrayLetter ? 1 : 2
             extras = [rawRoman]
             // 先頭だけ大文字にした形も（例：hello → Hello）
             let cap = rawRoman.prefix(1).uppercased() + rawRoman.dropFirst()
