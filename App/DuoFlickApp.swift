@@ -11,6 +11,8 @@ struct DuoFlickApp: App {
 
 struct ContentView: View {
     @State private var text = ""
+    @State private var showTutorial = false
+    private static let tutorialKey = "DuoFlick.app.tutorialSeen.v1"
 
     var body: some View {
         NavigationStack {
@@ -24,6 +26,9 @@ struct ContentView: View {
                             UIApplication.shared.open(url)
                         }
                     }
+                }
+                Section("使い方") {
+                    Button("はじめに（チュートリアル）") { showTutorial = true }
                 }
                 Section("設定") {
                     NavigationLink("設定を開く") { DesignScreen() }
@@ -45,6 +50,16 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("DuoFlick")
+            .onAppear {
+                // 最初の起動だけ、チュートリアルを出す
+                if !SharedStore.defaults.bool(forKey: Self.tutorialKey) { showTutorial = true }
+            }
+            .fullScreenCover(isPresented: $showTutorial) {
+                TutorialScreen {
+                    SharedStore.defaults.set(true, forKey: Self.tutorialKey)
+                    showTutorial = false
+                }
+            }
         }
     }
 }
