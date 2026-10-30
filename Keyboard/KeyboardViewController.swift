@@ -162,6 +162,32 @@ final class KeyboardViewController: UIInputViewController {
         super.textDidChange(textInput)
         applyKeyboardType()
         updateKeyLabels()
+        scheduleEmptyCheck()
+    }
+
+    /// LINEなどで送信すると、入力欄が外から空にされる。キーボードは予測（確定した語の続き）を持ったままなので、
+    /// 送った文字の続きが候補に出続けた。入力欄が空になったら、予測と「直前の確定」を捨てる
+    private var emptyCheckWork: DispatchWorkItem?
+    private var contextSeen = false
+    private func scheduleEmptyCheck() {
+        emptyCheckWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.composer.isEmpty else { return }
+            let proxy = self.textDocumentProxy
+            let before = proxy.documentContextBeforeInput ?? ""
+            let after = proxy.documentContextAfterInput ?? ""
+            if !before.isEmpty || !after.isEmpty { self.contextSeen = true; return }
+            guard self.contextSeen else { return }
+            guard !self.composer.predictionTexts.isEmpty || self.lastCommit != nil || !self.domainCandidates.isEmpty else { return }
+            self.composer.clearPredictions()
+            self.lastCommit = nil
+            self.domainCandidates = []
+            self.contextSeen = false
+            self.refreshBar()
+        }
+        emptyCheckWork = work
+        // 確定の直後は、入力欄の中身が反映される前に呼ばれることがあるので、少し待ってから確かめる
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
     /// 入力欄の種類に合わせて、最初の文字種を選ぶ
@@ -702,6 +728,14 @@ final class KeyboardViewController: UIInputViewController {
     private func insertCommitted(_ text: String) {
         textDocumentProxy.insertText(text)
         markedActive = false
+        // この入力欄が文脈を返せるか確かめておく（返せないアプリでは、空になったかどうかを判断しない）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self else { return }
+            let p = self.textDocumentProxy
+            if !(p.documentContextBeforeInput ?? "").isEmpty || !(p.documentContextAfterInput ?? "").isEmpty {
+                self.contextSeen = true
+            }
+        }
     }
 
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
