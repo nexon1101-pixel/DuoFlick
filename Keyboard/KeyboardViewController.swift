@@ -172,10 +172,24 @@ final class KeyboardViewController: UIInputViewController {
     private func scheduleEmptyCheck() {
         emptyCheckWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.composer.isEmpty else { return }
+            guard let self else { return }
             let proxy = self.textDocumentProxy
             let before = proxy.documentContextBeforeInput ?? ""
             let after = proxy.documentContextAfterInput ?? ""
+            // 変換待ちのまま送信されたとき：アプリが下線付きの文字ごと入力欄を空にしている。読みと候補を捨てる
+            if !self.composer.isEmpty {
+                if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty {
+                    self.composer.reset()
+                    self.markedActive = false
+                    self.markedVisible = false
+                    self.lastCommit = nil
+                    self.keyboardView.resetFlickHistory()
+                    self.hideCandidateList()
+                    self.refreshBar()
+                }
+                return
+            }
+            self.markedVisible = false
             if !before.isEmpty || !after.isEmpty { self.contextSeen = true; return }
             guard self.contextSeen else { return }
             guard !self.composer.predictionTexts.isEmpty || self.lastCommit != nil || !self.domainCandidates.isEmpty else { return }
@@ -714,7 +728,14 @@ final class KeyboardViewController: UIInputViewController {
     private func showMarked(_ text: String) {
         textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
         markedActive = true
+        // この入力欄が、下線付きの文字を文脈として返すか確かめておく（空になったかどうかの判断に使う）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.markedActive, !self.composer.isEmpty else { return }
+            let p = self.textDocumentProxy
+            if !(p.documentContextBeforeInput ?? "").isEmpty { self.markedVisible = true }
+        }
     }
+    private var markedVisible = false
 
     /// 下線付きの文字を消す（入力中の文字を全部消したとき）
     private func clearMarked() {
