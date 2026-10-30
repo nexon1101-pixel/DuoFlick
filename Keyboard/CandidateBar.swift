@@ -82,10 +82,18 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     private var shownItems: [String] = []
     private var shownSelected: Int?
 
-    func show(_ items: [String], selected: Int?) {
+    private var shownDimmed = false
+    private lazy var centerWidth = stack.widthAnchor.constraint(greaterThanOrEqualTo: scroll.frameLayoutGuide.widthAnchor, constant: -16)
+
+    /// dimmed が true のときは、文字を薄いグレーにする（「コピー内容の貼り付け」など、候補ではない案内用）
+    func show(_ items: [String], selected: Int?, dimmed: Bool = false) {
         let list = Array(items.prefix(Self.maxItems))
         // 同じ内容なら作り直さない（ちらつきと無駄な処理を防ぐ）
-        if list == shownItems && selected == shownSelected { return }
+        if list == shownItems && selected == shownSelected && dimmed == shownDimmed { return }
+        shownDimmed = dimmed
+        // 案内（コピー内容の貼り付けなど）は、帯の真ん中に出す
+        centerWidth.isActive = dimmed
+        stack.distribution = dimmed ? .equalCentering : .fill
         let wasEmpty = shownItems.isEmpty
         // 候補がなくなるときは、上へスライドしながら消す
         if list.isEmpty, !wasEmpty, let snap = stack.snapshotView(afterScreenUpdates: false) {
@@ -109,7 +117,7 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
             config.attributedTitle = title
             config.titleLineBreakMode = .byClipping
             config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
-            config.baseForegroundColor = i == selected ? Palette.pressedText : Palette.text
+            config.baseForegroundColor = i == selected ? Palette.pressedText : (dimmed ? Palette.text.withAlphaComponent(0.45) : Palette.text)
             config.background.backgroundColor = i == selected ? Palette.pressed : .clear
             config.background.cornerRadius = 8
             let b = UIButton(configuration: config)

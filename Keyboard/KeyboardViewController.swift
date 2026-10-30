@@ -334,12 +334,10 @@ final class KeyboardViewController: UIInputViewController {
         case .undoCommit:
             undoCommit()
         case .paste:
-            if let text = UIPasteboard.general.string, !text.isEmpty {
-                commitAll()
-                composer.clearPredictions()
-                proxy.insertText(text)
-                refreshBar()
-            }
+            // 英字面の貼付キーは、クリップボード履歴を開く
+            commitAll()
+            composer.clearPredictions()
+            showClipboard()
         case .numberPad:
             break
         case .gripSwitch:
@@ -738,7 +736,8 @@ final class KeyboardViewController: UIInputViewController {
                 pasteChip = canPaste && UIPasteboard.general.hasStrings
                 // 画像はキーボードから入れられないので、入力欄を長押しして貼り付けてもらう
                 imageChip = canPaste && !pasteChip && UIPasteboard.general.hasImages
-                showBar(pasteChip ? ["貼り付け"] : (imageChip ? ["長押しして画像を貼り付け"] : items), selected: nil)
+                showBar(pasteChip ? ["コピー内容の貼り付け"] : (imageChip ? ["長押しして画像を貼り付け"] : items), selected: nil,
+                        dimmed: pasteChip || imageChip)
             }
             hideCandidateList()
         }
@@ -886,15 +885,15 @@ final class KeyboardViewController: UIInputViewController {
     private let panelModel = PanelModel()
     private var middleHost: UIHostingController<MiddlePanel>?
 
-    private func showBar(_ items: [String], selected: Int?) {
-        candidateBar.show(items, selected: selected)
+    private func showBar(_ items: [String], selected: Int?, dimmed: Bool = false) {
+        candidateBar.show(items, selected: selected, dimmed: dimmed)
         panelModel.items = Array((composer.isEmpty ? items : composer.listTexts).prefix(60))
         panelModel.selected = selected
     }
 
     private func updateMiddlePanel(_ rect: CGRect?) {
         // 真ん中に候補を出すときは、上の候補の帯は要らない
-        candidateBar.isHidden = rect != nil
+        candidateBar.isHidden = rect != nil || panelHost != nil
         guard let rect else {
             if let h = middleHost {
                 h.willMove(toParent: nil); h.view.removeFromSuperview(); h.removeFromParent()
@@ -1099,6 +1098,8 @@ final class KeyboardViewController: UIInputViewController {
         hideCandidateList()
         keyboardView.isHidden = hidesKeys
         middleHost?.view.isHidden = hidesKeys
+        // 透けたパネルと候補の帯が重ならないよう、帯も隠す
+        if hidesKeys { candidateBar.isHidden = true }
         let host = UIHostingController(rootView: panel)
         host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -1122,6 +1123,7 @@ final class KeyboardViewController: UIInputViewController {
         panelHost = nil
         keyboardView.isHidden = false
         middleHost?.view.isHidden = false
+        candidateBar.isHidden = middleHost != nil
     }
 
     // MARK: - 単語登録
