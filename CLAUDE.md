@@ -203,3 +203,7 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - 内側画面で、アプリが iPhone 大きさの枠（左右が黒）で出る。iPhone Duo は、アプリをビルドした SDK で出し方を変える：iOS 27 より前の SDK＝今までの大きさ（左右が黒）、27.0＝広がるが余白あり、27.1＝画面いっぱい（Xcode 27.1 が必要。2026-10-15 に出た）。出典：9to5mac（2026-09-09）、blakecrosley.com の記事。UIRequiresFullScreen は入れない
 - build.yml を macos-26 にして、入っている中でいちばん新しい Xcode を選ぶ（Select newest Xcode）。Xcode 27.1 が入っていなければ、26.x でビルドされる（ログに using ... と出る）。キャッシュのキーは deriv27- に変えた
 - v0.30.0 の設定画面は、外側画面では想定どおり出た（プレビュー・形・スライダー）
+
+## v0.30.2：Xcode 27 のランナーでビルド
+- macos-26 のランナーには Xcode 26.5 / 26.6 しか入っておらず、v0.30.1 は Xcode 26.6（iOS 26.5 SDK）でビルドされた（ipa の Info.plist の DTXcode / DTSDKName で確認できる）。Xcode 27 は別のランナー `xcode-27`（arm64、macOS 27、2026-10-15 に一般提供）にある。build.yml の runs-on を xcode-27 にした。入っている Xcode 27.x が 27.1 かどうかは、ビルド後の ipa の DTSDKName（iphoneos27.1 など）で見る
+- 27.1 でなく 27.0 だった場合は、内側画面は「広がるが余白あり」の段階になる
