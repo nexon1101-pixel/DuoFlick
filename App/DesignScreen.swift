@@ -35,19 +35,31 @@ final class PreviewContainer: UIView {
     }
 }
 
+/// プレビューのキーボードを、画面側から操作するための入れ物（補正のリセットなど）
+final class PreviewHandle: ObservableObject {
+    weak var container: PreviewContainer?
+}
+
 struct KeyboardPreview: UIViewRepresentable {
     let settings: KeyboardSettings
     let grip: Grip
     let mode: InputMode
     let profile: ScreenProfile
+    let showCorrection: Bool
+    let handle: PreviewHandle
 
-    func makeUIView(context: Context) -> PreviewContainer { PreviewContainer(frame: .zero) }
+    func makeUIView(context: Context) -> PreviewContainer {
+        let v = PreviewContainer(frame: .zero)
+        handle.container = v
+        return v
+    }
 
     func updateUIView(_ v: PreviewContainer, context: Context) {
         v.profile = profile
         v.kv.grip = grip
         v.kv.mode = mode
         v.kv.settings = settings
+        v.kv.showCorrection = showCorrection
         v.kv.setNeedsDisplay()
         v.setNeedsLayout()
     }
@@ -71,6 +83,10 @@ struct DesignScreen: View {
     @State private var lastPush = Date.distantPast
     @State private var confirmReset = false
     @State private var backupMessage = ""
+    @StateObject private var handle = PreviewHandle()
+    @State private var showCorrection = false
+    @State private var offsetText = ""
+    @State private var trial = ""
 
     var body: some View {
         GeometryReader { geo in
@@ -104,6 +120,7 @@ struct DesignScreen: View {
             }
         }
         .onAppear { model.select(profile: profile, grip: grip) }
+        .onChange(of: model.settings) { _, _ in SettingsSignal.post() }
         .onChange(of: profile) { _, _ in switchContext() }
         .onChange(of: grip) { _, _ in switchContext() }
     }
@@ -128,11 +145,42 @@ struct DesignScreen: View {
                 }
                 .pickerStyle(.segmented)
             }
-            KeyboardPreview(settings: model.settings, grip: grip, mode: mode, profile: profile)
+            KeyboardPreview(settings: model.settings, grip: grip, mode: mode, profile: profile,
+                            showCorrection: showCorrection, handle: handle)
                 .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
             if profile == .wide {
                 Text("内側画面は、実際のキーボードの幅（約669pt）で組んで、収まらないときは縮めて表示しています。").font(.caption2).foregroundStyle(.secondary)
+            }
+            Toggle("補正を見る（赤い点：当たりやすい位置、黄色の線：方向の境目）", isOn: $showCorrection)
+                .font(.footnote)
+                .onChange(of: showCorrection) { _, on in
+                    if on { handle.container?.kv.reloadCorrection() }
+                    offsetText = handle.container?.kv.offsetDescription ?? ""
+                }
+            if showCorrection {
+                HStack {
+                    Text(offsetText).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("ずれ補正をリセット") {
+                        handle.container?.kv.resetOffset()
+                        handle.container?.kv.reloadCorrection()
+                        offsetText = handle.container?.kv.offsetDescription ?? ""
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("試し打ち").font(.footnote.weight(.semibold))
+                TextEditor(text: $trial)
+                    .frame(height: 90)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(uiColor: .systemBackground)))
+                Text("ここをタップして、地球儀キーでDuoFlickに切り替えると、本物のキーボードで試せます。設定を変えると、開いているキーボードにもすぐ反映されます。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 12)

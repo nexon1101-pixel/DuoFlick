@@ -35,6 +35,12 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidLoad()
         // 背景はiOS標準のキーボード背景（角の丸い枠）をそのまま使う
         view.backgroundColor = .clear
+        // アプリ本体の設定画面で設定が変わったら、すぐ読み直す
+        SettingsSignal.observe { [weak self] in
+            guard let self else { return }
+            self.model.reload()
+            self.keyboardView.grip = self.model.grip
+        }
 
         for v in [keyboardView, candidateBar, guideView] as [UIView] {
             v.translatesAutoresizingMaskIntoConstraints = false

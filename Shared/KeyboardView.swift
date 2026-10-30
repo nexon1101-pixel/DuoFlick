@@ -472,6 +472,13 @@ final class KeyboardView: UIView {
         return true
     }
 
+    /// 保存してある補正を読み直す（キーボードで学習した分を、アプリの表示に反映するため）
+    func reloadCorrection() {
+        loadedSuffix = nil
+        ensureCorrection()
+        setNeedsDisplay()
+    }
+
     func resetOffset() {
         ensureCorrection()
         touchOffset = .zero
