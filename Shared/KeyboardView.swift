@@ -132,6 +132,14 @@ final class KeyboardView: UIView {
         var cancelTimer: Timer?
         var cursorAnchorX: CGFloat = 0
         var cursorAnchorY: CGFloat = 0
+        /// トラックパッド操作の途中経過（前回の位置と時刻、動きの向きの平均、まだ使っていない移動量）
+        var lastX: CGFloat = 0
+        var lastY: CGFloat = 0
+        var lastTime: TimeInterval = 0
+        var ax: CGFloat = 0
+        var ay: CGFloat = 0
+        var accX: CGFloat = 0
+        var accY: CGFloat = 0
         /// 数字キー：0なら0〜4、1なら5〜9の枠を開いた
         var numberStage: Int?
         var numberAnchor: CGPoint = .zero
@@ -211,10 +219,15 @@ final class KeyboardView: UIView {
         for k in keys {
             let isPressed = pressedCenters.contains(k.center)
             let accent = accentIDs.contains(k.def.id) && !disabledIDs.contains(k.def.id)
-            let fill: UIColor = isPressed ? Palette.pressed
+            var fill: UIColor = isPressed ? Palette.pressed
                 : (accent ? Palette.accent : (k.def.isCharacter ? Palette.key : Palette.functionKey))
+            var isSpaceKey = false
+            if case .space = k.def.action { isSpaceKey = true }
+            // トラックパッド中は、空白以外のキーを薄くして、文字を消す
+            let dimmed = cursorMode && !isSpaceKey
+            if dimmed { fill = fill.withAlphaComponent(0.3) }
 
-            if let shadow = k.path.copy() as? UIBezierPath {
+            if !dimmed, let shadow = k.path.copy() as? UIBezierPath {
                 shadow.apply(CGAffineTransform(translationX: 0, y: 1))
                 Palette.shadow.setFill()
                 shadow.fill()
@@ -223,6 +236,7 @@ final class KeyboardView: UIView {
             fill.setFill()
             k.path.fill()
             if k.isSector { fill.setStroke(); k.path.stroke() }
+            if dimmed { continue }
 
             let m = min(k.size.width, k.size.height)
             let lockedDigit: String? = numberLocked ? Self.numberKeyDigits[k.def.id] : nil
@@ -665,8 +679,7 @@ final class KeyboardView: UIView {
                 a.timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self, weak a] _ in
                     guard let self, let a else { return }
                     a.cursorMode = true
-                    a.cursorAnchorX = a.current.x
-                    a.cursorAnchorY = a.current.y
+                    self.beginTrackpad(a, at: a.current, time: ProcessInfo.processInfo.systemUptime)
                     self.startCursorEdgeRepeat(a)
                     self.setNeedsDisplay()
                 }
@@ -711,6 +724,52 @@ final class KeyboardView: UIView {
         }
     }
 
+    /// 空白キーの長押しで、キーボード全体がトラックパッドになる（iOS標準と同じ）
+    private func beginTrackpad(_ a: Active, at p: CGPoint, time: TimeInterval) {
+        a.lastX = p.x
+        a.lastY = p.y
+        a.lastTime = time
+        a.ax = 0
+        a.ay = 0
+        a.accX = 0
+        a.accY = 0
+    }
+
+    /// 指の動きをカーソルの移動にする。速く動かすほど大きく進み、縦横はおもに動いている向きだけを使う（斜めのぶれで行が動かないように）
+    private func moveTrackpad(_ a: Active, to p: CGPoint, time: TimeInterval) {
+        let ptPerMM = CGFloat(KeyboardSettings.ptPerMM)
+        let dt = max(time - a.lastTime, 0.004)
+        let ddx = p.x - a.lastX
+        let ddy = p.y - a.lastY
+        a.lastX = p.x
+        a.lastY = p.y
+        a.lastTime = time
+        a.ax = a.ax * 0.7 + abs(ddx) * 0.3
+        a.ay = a.ay * 0.7 + abs(ddy) * 0.3
+        let speed = hypot(ddx, ddy) / CGFloat(dt)   // pt/秒
+        let gain = min(3, max(1, 1 + (speed - 250) / 500)) * CGFloat(settings.cursorSpeed)
+        if a.ay > a.ax * 1.6 {
+            // 縦に動かしているとき：横の移動は捨てる
+            a.accX = 0
+            a.accY += ddy * gain
+            let lineStep: CGFloat = 6 * ptPerMM
+            let lines = Int(a.accY / lineStep)
+            if lines != 0 {
+                onCursorVertical?(lines)
+                a.accY -= CGFloat(lines) * lineStep
+            }
+        } else {
+            a.accY = 0
+            a.accX += ddx * gain
+            let stepPt: CGFloat = 2.0 * ptPerMM
+            let steps = Int(a.accX / stepPt)
+            if steps != 0 {
+                onCursor?(steps)
+                a.accX -= CGFloat(steps) * stepPt
+            }
+        }
+    }
+
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         let stepPt: CGFloat = 2.2 * CGFloat(KeyboardSettings.ptPerMM)
         for t in touches {
@@ -728,8 +787,7 @@ final class KeyboardView: UIView {
                 if abs(p.x - a.start.x) > stepPt * 1.5 {
                     a.timer?.invalidate()
                     a.cursorMode = true
-                    a.cursorAnchorX = a.start.x
-                    a.cursorAnchorY = a.start.y
+                    beginTrackpad(a, at: p, time: t.timestamp)
                     startCursorEdgeRepeat(a)
                 }
             }
@@ -738,21 +796,7 @@ final class KeyboardView: UIView {
                 let movedMM: CGFloat = hypot(p.x - a.start.x, p.y - a.start.y) / CGFloat(KeyboardSettings.ptPerMM)
                 if movedMM >= CGFloat(settings.flickMinMM) { a.timer?.invalidate() }
             }
-            if a.cursorMode {
-                let moved: CGFloat = p.x - a.cursorAnchorX
-                let steps = Int(moved / stepPt)
-                if steps != 0 {
-                    onCursor?(steps)
-                    a.cursorAnchorX += CGFloat(steps) * stepPt
-                }
-                let lineStep: CGFloat = 4.5 * CGFloat(KeyboardSettings.ptPerMM)
-                let movedY: CGFloat = p.y - a.cursorAnchorY
-                let lines = Int(movedY / lineStep)
-                if lines != 0 {
-                    onCursorVertical?(lines)
-                    a.cursorAnchorY += CGFloat(lines) * lineStep
-                }
-            }
+            if a.cursorMode { moveTrackpad(a, to: p, time: t.timestamp) }
         }
         setNeedsDisplay()
     }

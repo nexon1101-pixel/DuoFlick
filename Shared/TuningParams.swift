@@ -34,6 +34,8 @@ enum TuningParams {
                     keyPath: \.edgeGrowPercent, shapes: [.rightGrid, .fan], compareDelta: nil),
         TuningParam(id: "t", label: "方向の傾き", range: -30...30, step: 1, unit: "°",
                     keyPath: \.tiltDeg, shapes: KeyboardShape.allCases, compareDelta: nil),
+        TuningParam(id: "c", label: "カーソル移動の速さ", range: 0.5...2.5, step: 0.1, unit: "倍",
+                    keyPath: \.cursorSpeed, shapes: KeyboardShape.allCases, compareDelta: nil),
         TuningParam(id: "l", label: "文字の大きさ", range: 0.7...1.4, step: 0.05, unit: "倍",
                     keyPath: \.labelScale, shapes: KeyboardShape.allCases, compareDelta: nil),
     ]

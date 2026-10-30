@@ -57,6 +57,8 @@ struct KeyboardSettings: Codable, Equatable {
     var splitKana: Bool = false
     /// 内側画面の片手持ちを、iOS標準に合わせた配置（左に4キー、間に候補の一覧、右にかな）にする
     var iosLayout: Bool = true
+    /// 空白キー長押しのカーソル移動の速さ（倍率）
+    var cursorSpeed: Double = 1.0
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape
@@ -90,6 +92,7 @@ struct KeyboardSettings: Codable, Equatable {
         lockWhileComposing = (try? c.decode(Bool.self, forKey: .lockWhileComposing)) ?? d.lockWhileComposing
         splitKana = (try? c.decode(Bool.self, forKey: .splitKana)) ?? d.splitKana
         iosLayout = (try? c.decode(Bool.self, forKey: .iosLayout)) ?? d.iosLayout
+        cursorSpeed = (try? c.decode(Double.self, forKey: .cursorSpeed)) ?? d.cursorSpeed
     }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。

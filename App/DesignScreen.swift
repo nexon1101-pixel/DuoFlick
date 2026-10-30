@@ -296,6 +296,7 @@ struct DesignScreen: View {
                     detailSection
                 case .input:
                     inputSection
+                    cursorSection
                     convertSection
                 case .look:
                     lookSection
@@ -370,7 +371,7 @@ struct DesignScreen: View {
 
     private func params(main: Bool) -> [TuningParam] {
         TuningParams.all.filter {
-            $0.shapes.contains(draft.shape) && $0.id != "l" && (Self.mainIDs.contains($0.id) == main)
+            $0.shapes.contains(draft.shape) && $0.id != "l" && $0.id != "c" && (Self.mainIDs.contains($0.id) == main)
         }
     }
 
@@ -404,6 +405,7 @@ struct DesignScreen: View {
         "e": "親指から遠いキーを大きくする割合",
         "t": "フリックの方向の判定を、全体で回す角度",
         "l": "キーの文字の大きさ",
+        "c": "空白キーを長押ししてカーソルを動かすときの速さ。速く動かすと、さらに大きく進みます",
     ]
 
     private func sliderRow(_ p: TuningParam) -> some View {
@@ -454,6 +456,14 @@ struct DesignScreen: View {
             toggleRow("続けてタップで切り替え", "同じキーを続けて押すと あ→い→う と変わります", bind(\.toggleTap))
             toggleRow("ずれ補正", "押す位置と斜めのくせを覚えて、判定を直します", bind(\.autoCorrect))
             toggleRow("変換待ちは入力を中断するキーを止める", "読みに下線が出ている間、ABC・地球儀などを押せなくします", bind(\.lockWhileComposing))
+        }
+    }
+
+    private var cursorSection: some View {
+        Section {
+            if let p = TuningParams.all.first(where: { $0.id == "c" }) { sliderRow(p) }
+        } header: {
+            Text("カーソル移動（空白キー長押し）")
         }
     }
 
