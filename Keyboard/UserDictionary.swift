@@ -14,7 +14,7 @@ final class UserDictionaryStore: ObservableObject {
     var onChange: (() -> Void)?
 
     init() {
-        if let data = UserDefaults.standard.data(forKey: Self.key),
+        if let data = SharedStore.defaults.data(forKey: Self.key),
            let list = try? JSONDecoder().decode([UserWord].self, from: data) {
             words = list
         }
@@ -53,7 +53,7 @@ final class UserDictionaryStore: ObservableObject {
 
     private func save() {
         if let data = try? JSONEncoder().encode(words) {
-            UserDefaults.standard.set(data, forKey: Self.key)
+            SharedStore.defaults.set(data, forKey: Self.key)
         }
         onChange?()
     }

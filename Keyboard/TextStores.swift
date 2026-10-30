@@ -13,8 +13,8 @@ class TextListStore: ObservableObject {
     init(key: String, limit: Int) {
         self.key = key
         self.limit = limit
-        items = UserDefaults.standard.stringArray(forKey: key) ?? []
-        pinned = Set(UserDefaults.standard.stringArray(forKey: key + ".pinned") ?? [])
+        items = SharedStore.defaults.stringArray(forKey: key) ?? []
+        pinned = Set(SharedStore.defaults.stringArray(forKey: key + ".pinned") ?? [])
         sortPinnedFirst()
     }
 
@@ -56,8 +56,8 @@ class TextListStore: ObservableObject {
     }
 
     private func save() {
-        UserDefaults.standard.set(items, forKey: key)
-        UserDefaults.standard.set(Array(pinned), forKey: key + ".pinned")
+        SharedStore.defaults.set(items, forKey: key)
+        SharedStore.defaults.set(Array(pinned), forKey: key + ".pinned")
     }
 }
 

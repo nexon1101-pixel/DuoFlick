@@ -175,3 +175,10 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 
 ## v0.28.12：アイコン
 - アプリのアイコンは App/Assets.xcassets/AppIcon.appiconset/AppIcon.png（1024×1024、白いキーの「D」と上向きの矢印、オレンジ〜ピンクの背景）。自作の絵で、Pillow で描いた。描き直すときの元の案（A 十字のフリック・B 扇形・C 今のもの）は作業用の場所にあり、リポジトリには入れていない
+
+## v0.29.0：App Groups（SideStore）への対応
+- Shared/SharedStore.swift：設定の保存先。App Group が使えれば共有の場所、使えなければ今までどおり各アプリの中（SharedStore.defaults）。実際のグループ名は SideStore が末尾にチーム ID を付けるので、アプリに入っている embedded.mobileprovision の entitlements から読む（groupID）。共有に切り替わった最初の一回だけ、これまでの DuoFlick.* を引き継ぐ
+- Keyboard/ と App/ の UserDefaults.standard は、すべて SharedStore.defaults に置き換えた
+- tools/entitlements/{app,keyboard}.entitlements に group.jp.wataru.duoflick を宣言。ビルドの最後（Package .ipa）で、フレームワーク・拡張・アプリを仮署名（codesign -s -）して、entitlements を署名に入れる。Info.plist にも ALTAppGroups を入れた
+- アプリのホームに「共有の状態」を出す。「共有できています」と出れば成功。出ないときは、SideStore が App Group を登録できていない（名前や権限を疑う）
+- 次にやること：共有ができたら、アプリ本体に新しい設定画面（上にキーボードのプレビュー、下に調整）を作る

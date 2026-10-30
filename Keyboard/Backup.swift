@@ -12,7 +12,7 @@ enum Backup {
 
     static func makeJSON() -> String? {
         var values: [String: String] = [:]
-        for (key, value) in UserDefaults.standard.dictionaryRepresentation() where isTarget(key) {
+        for (key, value) in SharedStore.defaults.dictionaryRepresentation() where isTarget(key) {
             if let data = try? PropertyListSerialization.data(fromPropertyList: value, format: .binary, options: 0) {
                 values[key] = data.base64EncodedString()
             }
@@ -37,7 +37,7 @@ enum Backup {
         for (key, base64) in values where isTarget(key) {
             guard let raw = Data(base64Encoded: base64),
                   let value = try? PropertyListSerialization.propertyList(from: raw, options: [], format: nil) else { continue }
-            UserDefaults.standard.set(value, forKey: key)
+            SharedStore.defaults.set(value, forKey: key)
             count += 1
         }
         return count

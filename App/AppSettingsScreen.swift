@@ -3,7 +3,7 @@ import SwiftUI
 /// アプリ本体の設定画面。変更したら「キーボードに反映」を押す（クリップボード経由で、次にキーボードを開いたときに読み込まれる）
 struct AppSettingsScreen: View {
     @State private var prefs: SharedPrefs = {
-        if let data = UserDefaults.standard.data(forKey: "DuoFlick.app.prefs.v1"),
+        if let data = SharedStore.defaults.data(forKey: "DuoFlick.app.prefs.v1"),
            let p = try? JSONDecoder().decode(SharedPrefs.self, from: data) { return p }
         return SharedPrefs()
     }()
@@ -40,7 +40,7 @@ struct AppSettingsScreen: View {
         .onChange(of: prefs) { _, new in
             copied = false
             if let data = try? JSONEncoder().encode(new) {
-                UserDefaults.standard.set(data, forKey: "DuoFlick.app.prefs.v1")
+                SharedStore.defaults.set(data, forKey: "DuoFlick.app.prefs.v1")
             }
         }
     }

@@ -132,13 +132,13 @@ struct KeyboardSettings: Codable, Equatable {
     }
 
     private static func stored(_ key: String) -> KeyboardSettings? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        guard let data = SharedStore.defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(KeyboardSettings.self, from: data)
     }
 
     func save(profile: ScreenProfile, grip: Grip) {
         if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: profile.storeKey(grip))
+            SharedStore.defaults.set(data, forKey: profile.storeKey(grip))
         }
     }
 }
@@ -189,10 +189,10 @@ final class SettingsModel: ObservableObject {
     private static let presetKey = "DuoFlick.presets.v1"
 
     init() {
-        let g = Grip(rawValue: UserDefaults.standard.string(forKey: Self.gripKey) ?? "") ?? .one
+        let g = Grip(rawValue: SharedStore.defaults.string(forKey: Self.gripKey) ?? "") ?? .one
         grip = g
         settings = KeyboardSettings.load(profile: .narrow, grip: g)
-        if let data = UserDefaults.standard.data(forKey: Self.presetKey),
+        if let data = SharedStore.defaults.data(forKey: Self.presetKey),
            let list = try? JSONDecoder().decode([SavedPreset].self, from: data) {
             presets = list
         }
@@ -209,7 +209,7 @@ final class SettingsModel: ObservableObject {
     /// 片手持ち⇄両手持ちを切り替える
     func toggleGrip() {
         grip = grip == .one ? .two : .one
-        UserDefaults.standard.set(grip.rawValue, forKey: Self.gripKey)
+        SharedStore.defaults.set(grip.rawValue, forKey: Self.gripKey)
         let s = KeyboardSettings.load(profile: profile, grip: grip)
         if s == settings {
             onChange?(settings)
@@ -237,7 +237,7 @@ final class SettingsModel: ObservableObject {
 
     private func storePresets() {
         if let data = try? JSONEncoder().encode(presets) {
-            UserDefaults.standard.set(data, forKey: Self.presetKey)
+            SharedStore.defaults.set(data, forKey: Self.presetKey)
         }
     }
 }

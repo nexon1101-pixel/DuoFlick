@@ -63,6 +63,16 @@ jobs:
             cp -R "$fw" Payload/DuoFlick.app/Frameworks/
           done
           rmdir Payload/DuoFlick.app/Frameworks 2>/dev/null || true
+          # App Groups の宣言（entitlements）を署名の中に入れる。SideStore は、ここを読んで共有の場所を登録する。
+          # ここでの署名は仮のもの（実際の署名は、入れるときに SideStore / Sideloadly がやり直す）
+          for fw in Payload/DuoFlick.app/Frameworks/*.framework; do
+            [ -e "$fw" ] || continue
+            codesign -f -s - "$fw"
+          done
+          codesign -f -s - --entitlements tools/entitlements/keyboard.entitlements Payload/DuoFlick.app/PlugIns/DuoFlickKeyboard.appex
+          codesign -f -s - --entitlements tools/entitlements/app.entitlements Payload/DuoFlick.app
+          echo "== app entitlements =="; codesign -d --entitlements - Payload/DuoFlick.app 2>&1 | head -20
+          echo "== appex entitlements =="; codesign -d --entitlements - Payload/DuoFlick.app/PlugIns/DuoFlickKeyboard.appex 2>&1 | head -20
           # 辞書には日本語のファイル名（キ.louds など）があるため、ファイル名を UTF-8 と明示した zip にする。
           # 印のない zip だと、Windows の Sideloadly で展開したときに名前が文字化けし、辞書が読めなくなる。
           python3 - <<'PY'

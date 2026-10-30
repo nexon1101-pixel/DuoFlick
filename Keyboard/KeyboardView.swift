@@ -393,7 +393,7 @@ final class KeyboardView: UIView {
 
     /// 補正の保存値を読む。組み合わせごとの値がまだなく、以前の（共通の）値が残っていれば、最初に開いた組み合わせに引き継ぐ
     private func loadStored(_ base: String) -> Any? {
-        let d = UserDefaults.standard
+        let d = SharedStore.defaults
         if let v = d.object(forKey: ckey(base)) { return v }
         if let v = d.object(forKey: base) {
             d.set(v, forKey: ckey(base))
@@ -424,7 +424,7 @@ final class KeyboardView: UIView {
 
     private func saveKeyDeltas() {
         let d = keyDeltas.mapValues { [Double($0.x), Double($0.y)] }
-        UserDefaults.standard.set(d, forKey: ckey(Self.keyOffsetsKey))
+        SharedStore.defaults.set(d, forKey: ckey(Self.keyOffsetsKey))
     }
 
     /// そのキーを押すときの、実際に使うずれ（全体のずれ＋キーごとの差）
@@ -453,7 +453,7 @@ final class KeyboardView: UIView {
         x = min(max(x, -limit), limit)
         y = min(max(y, -limit), limit)
         touchOffset = CGPoint(x: x, y: y)
-        UserDefaults.standard.set([Double(x), Double(y)], forKey: ckey(Self.offsetKey))
+        SharedStore.defaults.set([Double(x), Double(y)], forKey: ckey(Self.offsetKey))
         // キーごとの差：このキーでは、全体のずれよりどれだけ余計にずれたか
         moveDelta(k.def.id, toward: CGPoint(x: dx - x, y: dy - y), rate: 0.05)
         saveKeyDeltas()
@@ -476,10 +476,10 @@ final class KeyboardView: UIView {
         ensureCorrection()
         touchOffset = .zero
         keyDeltas = [:]
-        UserDefaults.standard.removeObject(forKey: ckey(Self.keyOffsetsKey))
-        UserDefaults.standard.removeObject(forKey: ckey(Self.offsetKey))
+        SharedStore.defaults.removeObject(forKey: ckey(Self.keyOffsetsKey))
+        SharedStore.defaults.removeObject(forKey: ckey(Self.offsetKey))
         flickBounds = [0, 0, 0, 0]
-        UserDefaults.standard.removeObject(forKey: ckey(Self.boundsKey))
+        SharedStore.defaults.removeObject(forKey: ckey(Self.boundsKey))
     }
 
     /// 調整バーに出す、今の補正量（mm）
@@ -624,7 +624,7 @@ final class KeyboardView: UIView {
         var b: CGFloat = flickBounds[i] + (target - edge) * 0.35
         b = min(max(b, -20), 20)
         flickBounds[i] = b
-        UserDefaults.standard.set(flickBounds.map { Double($0) }, forKey: ckey(Self.boundsKey))
+        SharedStore.defaults.set(flickBounds.map { Double($0) }, forKey: ckey(Self.boundsKey))
     }
 
 

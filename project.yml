@@ -10,8 +10,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: 0.28.12
-    CURRENT_PROJECT_VERSION: 79
+    MARKETING_VERSION: 0.29.0
+    CURRENT_PROJECT_VERSION: 80
     TARGETED_DEVICE_FAMILY: "1,2"
 targets:
   DuoFlick:
@@ -23,6 +23,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: DuoFlick
+        ALTAppGroups: [group.jp.wataru.duoflick]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -55,6 +56,7 @@ targets:
       path: Keyboard/Info.plist
       properties:
         CFBundleDisplayName: DuoFlick
+        ALTAppGroups: [group.jp.wataru.duoflick]
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController

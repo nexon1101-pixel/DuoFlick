@@ -28,6 +28,12 @@ struct ContentView: View {
                 Section("設定") {
                     NavigationLink("設定を開く") { AppSettingsScreen() }
                 }
+                Section("共有の状態") {
+                    Text("キーボードとの設定の共有：\(SharedStore.statusText)")
+                    if let id = SharedStore.groupID {
+                        Text(id).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
                 Section("試し打ち") {
                     TextEditor(text: $text)
                         .frame(minHeight: 160)

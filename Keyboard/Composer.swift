@@ -494,7 +494,7 @@ final class Composer {
     func resetLearning() {
         saveTask?.cancel()
         chosen = [:]
-        UserDefaults.standard.removeObject(forKey: Self.chosenKey)
+        SharedStore.defaults.removeObject(forKey: Self.chosenKey)
         var o = options
         o.shouldResetMemory = true
         converter.sendToDicdataStore(.setRequestOptions(o))
@@ -522,7 +522,7 @@ final class Composer {
     // MARK: 選んだ語の記憶（読み → 選んだ順。エンジンの学習だけでは順位が上がりにくいので、こちらで先頭に出す）
 
     private static let chosenKey = "DuoFlick.chosen.v1"
-    private var chosen: [String: [String]] = (UserDefaults.standard.dictionary(forKey: Composer.chosenKey) as? [String: [String]]) ?? [:]
+    private var chosen: [String: [String]] = (SharedStore.defaults.dictionary(forKey: Composer.chosenKey) as? [String: [String]]) ?? [:]
 
     private func readingKey(_ c: Candidate) -> String {
         c.data.map(\.ruby).joined()
@@ -538,7 +538,7 @@ final class Composer {
         if chosen.count > 4000 {
             for k in Array(chosen.keys.prefix(500)) where k != key { chosen.removeValue(forKey: k) }
         }
-        UserDefaults.standard.set(chosen, forKey: Self.chosenKey)
+        SharedStore.defaults.set(chosen, forKey: Self.chosenKey)
     }
 
     /// いちばん上の候補と同じ読みで、前に選んだ語があれば、新しい順に先頭へ出す
