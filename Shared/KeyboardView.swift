@@ -698,6 +698,21 @@ final class KeyboardView: UIView {
     }
 
 
+    /// 触った位置が、キーの真ん中（縦横それぞれ半分）に入っているキー
+    private func centralKey(at p: CGPoint) -> LaidKey? {
+        if p.y > keysBottom { return nil }
+        for k in keys where k.def.isCharacter {
+            let dx: CGFloat = p.x - k.center.x
+            let dy: CGFloat = p.y - k.center.y
+            let c: CGFloat = cos(k.rotation)
+            let sn: CGFloat = sin(k.rotation)
+            let lx: CGFloat = dx * c + dy * sn
+            let ly: CGFloat = dy * c - dx * sn
+            if abs(lx) <= k.size.width * 0.25 && abs(ly) <= k.size.height * 0.25 { return k }
+        }
+        return nil
+    }
+
     // MARK: - タッチ
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -709,10 +724,18 @@ final class KeyboardView: UIView {
             if settings.autoCorrect {
                 // まず全体のずれで仮のキーを決め、そのキーのずれ（全体＋キーごとの差）で位置を直してから、あらためて判定する
                 let first = hit(CGPoint(x: p.x - touchOffset.x, y: p.y - touchOffset.y))
-                let o = first.map { effectiveOffset($0.def.id) } ?? touchOffset
+                var o = first.map { effectiveOffset($0.def.id) } ?? touchOffset
+                // 補正の合計は、キーの大きさの3割まで（両手持ちの細いキーで、補正だけで隣のキーになるのを防ぐ）
+                if let f = first {
+                    let lx: CGFloat = f.size.width * 0.3, ly: CGFloat = f.size.height * 0.3
+                    o = CGPoint(x: min(max(o.x, -lx), lx), y: min(max(o.y, -ly), ly))
+                }
                 q = CGPoint(x: p.x - o.x, y: p.y - o.y)
             }
-            guard let k = hit(q) else { continue }
+            guard var k = hit(q) else { continue }
+            // 補正がききすぎて、キーの真ん中を押しても隣のキーになることがないよう、
+            // 実際に触った位置がキーの真ん中（縦横それぞれ半分）なら、そのキーを優先する
+            if settings.autoCorrect, let c = centralKey(at: p), c.def.id != k.def.id { k = c }
             let a = Active(key: k, start: p)
             if case .delete = k.def.action {
                 a.timer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { [weak self, weak a] _ in
