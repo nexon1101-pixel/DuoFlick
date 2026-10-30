@@ -346,6 +346,33 @@ final class KeyboardView: UIView {
         return a.count == 2 ? CGPoint(x: a[0], y: a[1]) : .zero
     }()
 
+    /// キーごとの、全体のずれからの差（親指が届きにくい端や下の段は、ずれ方が違うため）
+    private static let keyOffsetsKey = "DuoFlick.keyOffsets.v1"
+    private var keyDeltas: [String: CGPoint] = {
+        let d = UserDefaults.standard.dictionary(forKey: KeyboardView.keyOffsetsKey) as? [String: [Double]] ?? [:]
+        return d.compactMapValues { $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil }
+    }()
+    private static let deltaLimitMM: CGFloat = 2
+
+    private func saveKeyDeltas() {
+        let d = keyDeltas.mapValues { [Double($0.x), Double($0.y)] }
+        UserDefaults.standard.set(d, forKey: Self.keyOffsetsKey)
+    }
+
+    /// そのキーを押すときの、実際に使うずれ（全体のずれ＋キーごとの差）
+    private func effectiveOffset(_ id: String) -> CGPoint {
+        let d = keyDeltas[id] ?? .zero
+        return CGPoint(x: touchOffset.x + d.x, y: touchOffset.y + d.y)
+    }
+
+    private func moveDelta(_ id: String, toward target: CGPoint, rate: CGFloat) {
+        let cur = keyDeltas[id] ?? .zero
+        let limit: CGFloat = Self.deltaLimitMM * CGFloat(KeyboardSettings.ptPerMM)
+        let x = min(max(cur.x + (target.x - cur.x) * rate, -limit), limit)
+        let y = min(max(cur.y + (target.y - cur.y) * rate, -limit), limit)
+        keyDeltas[id] = CGPoint(x: x, y: y)
+    }
+
     /// 文字キーをタップした位置と、そのキーの中心とのずれを少しずつ平均する
     private func learnOffset(_ p: CGPoint, _ k: LaidKey) {
         guard settings.autoCorrect else { return }
@@ -359,10 +386,28 @@ final class KeyboardView: UIView {
         y = min(max(y, -limit), limit)
         touchOffset = CGPoint(x: x, y: y)
         UserDefaults.standard.set([Double(x), Double(y)], forKey: Self.offsetKey)
+        // キーごとの差：このキーでは、全体のずれよりどれだけ余計にずれたか
+        moveDelta(k.def.id, toward: CGPoint(x: dx - x, y: dy - y), rate: 0.05)
+        saveKeyDeltas()
+    }
+
+    /// 打ち間違いから学ぶ：Aを押して消し、隣のBを打ち直したとき、最初に触った位置はBを押すつもりだったとみなし、
+    /// Bを押すときの触る位置が、Aの側へずれているものとして、Bのずれを動かす
+    private func learnKeyMiss(old: FlickRecord, intended b: LaidKey) -> Bool {
+        guard let a = keys.first(where: { $0.def.id == old.keyID }), a.def.isCharacter, b.def.isCharacter else { return false }
+        let bSize: CGFloat = max(b.size.width, b.size.height)
+        guard hypot(a.center.x - b.center.x, a.center.y - b.center.y) < 1.8 * bSize,
+              hypot(old.point.x - b.center.x, old.point.y - b.center.y) < 0.85 * bSize else { return false }
+        let target = CGPoint(x: old.point.x - b.center.x - touchOffset.x, y: old.point.y - b.center.y - touchOffset.y)
+        moveDelta(b.def.id, toward: target, rate: 0.2)
+        saveKeyDeltas()
+        return true
     }
 
     func resetOffset() {
         touchOffset = .zero
+        keyDeltas = [:]
+        UserDefaults.standard.removeObject(forKey: Self.keyOffsetsKey)
         UserDefaults.standard.removeObject(forKey: Self.offsetKey)
         flickBounds = [0, 0, 0, 0]
         UserDefaults.standard.removeObject(forKey: Self.boundsKey)
@@ -442,6 +487,7 @@ final class KeyboardView: UIView {
         let keyID: String
         let dir: FlickDirection
         let angle: CGFloat?
+        let point: CGPoint   // 触り始めた位置
     }
     /// 最近打った文字キー（新しい順に末尾）。⌫で消すたびに、末尾から取り出す
     private var flickHistory: [FlickRecord] = []
@@ -466,8 +512,10 @@ final class KeyboardView: UIView {
             } else {
                 let old = pendingDeleted.removeFirst()
                 if old.keyID != k.def.id {
-                    // 別のキーを打った＝言い直しではなく打ち替えなので、突き合わせはやめる
-                    pendingDeleted.removeAll()
+                    // 隣のキーを押し間違えて打ち直した場合は、そのキーのずれを学習して続ける。それ以外は打ち替えなので、突き合わせはやめる
+                    if !(settings.autoCorrect && old.dir == .tap && dir == .tap && learnKeyMiss(old: old, intended: k)) {
+                        pendingDeleted.removeAll()
+                    }
                 } else if settings.autoCorrect, let oldAngle = old.angle, angle != nil,
                           dir != .tap, old.dir != .tap, dir != old.dir,
                           let index = boundary(old.dir, dir) {
@@ -475,7 +523,7 @@ final class KeyboardView: UIView {
                 }
             }
         }
-        flickHistory.append(FlickRecord(keyID: k.def.id, dir: dir, angle: angle))
+        flickHistory.append(FlickRecord(keyID: k.def.id, dir: dir, angle: angle, point: s))
         if flickHistory.count > 12 { flickHistory.removeFirst() }
     }
 
@@ -519,7 +567,13 @@ final class KeyboardView: UIView {
         for t in touches {
             let p = t.location(in: self)
             // ずれの自動補正：いつもずれる方向の分だけ、押した位置を戻してから判定する
-            let q = settings.autoCorrect ? CGPoint(x: p.x - touchOffset.x, y: p.y - touchOffset.y) : p
+            var q = p
+            if settings.autoCorrect {
+                // まず全体のずれで仮のキーを決め、そのキーのずれ（全体＋キーごとの差）で位置を直してから、あらためて判定する
+                let first = hit(CGPoint(x: p.x - touchOffset.x, y: p.y - touchOffset.y))
+                let o = first.map { effectiveOffset($0.def.id) } ?? touchOffset
+                q = CGPoint(x: p.x - o.x, y: p.y - o.y)
+            }
             guard let k = hit(q) else { continue }
             let a = Active(key: k, start: p)
             if case .delete = k.def.action {
