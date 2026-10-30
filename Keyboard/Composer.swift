@@ -106,14 +106,10 @@ final class Composer {
     private var extras: [String] = []
     private var extraAt = 2
 
-    /// 診断用（一時）：英字の候補が出ない理由を、候補の最後に出す
-    private var debugText = ""
-
     private func withExtra(_ texts: [String]) -> [String] {
-        guard !extras.isEmpty else { return debugText.isEmpty ? texts : [debugText] + texts }
+        guard !extras.isEmpty else { return texts }
         var t = texts
         t.insert(contentsOf: extras, at: min(extraAt, t.count))
-        if !debugText.isEmpty { t.insert(debugText, at: 0) }
         return t
     }
 
@@ -292,6 +288,8 @@ final class Composer {
     func insert(_ s: String, roman: Bool = false) {
         clearPredictions()
         selectedIndex = nil
+        // 入力が空から始まるときは、前に打った英字の記録を捨てる（確定や全削除のあとに残っていた）
+        if composing.isEmpty { rawRoman = ""; rawValid = true }
         // 文節を区切っていた場合も、入力は末尾に足す
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.insertAtCursorPosition(s, inputStyle: roman ? .roman2kana : .direct)
@@ -595,7 +593,6 @@ final class Composer {
         requestOptions.needTypoCorrection = typoCorrection
         candidates = prioritizeChosen(converter.requestCandidates(target, options: requestOptions).mainResults)
         extras = []
-        debugText = "診断 raw=\(rawRoman) valid=\(rawValid) seg=\(isSegmented) 読み=\(composing.convertTarget) 候補数=\(candidates.count)"
         guard !isSegmented else { return }
         let reading = composing.convertTarget
         let have = Set(candidates.map(\.text))
