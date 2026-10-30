@@ -4,6 +4,9 @@ name: build
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -104,3 +107,11 @@ jobs:
           name: DuoFlick-ipa
           path: DuoFlick.ipa
           retention-days: 14
+
+      # SideStore などで入れやすいよう、ipa を「latest」のリリースにも置く（毎回上書き）
+      - name: Publish ipa to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "最新のビルド" --notes "最新のビルドの ipa（毎回上書き）" --target "$GITHUB_SHA"
+          gh release upload latest DuoFlick.ipa --clobber

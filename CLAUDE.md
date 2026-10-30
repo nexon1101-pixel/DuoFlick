@@ -167,3 +167,8 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - 候補の帯の「コピー内容の貼り付け」（画像のときは「長押しして画像を貼り付け」）は、薄いグレーで、帯の真ん中に出す（CandidateBar.show の dimmed）
 - 英字面の貼付キーは、クリップボード履歴を開く（これまでは直接貼り付け）。帯の貼り付けは今までどおり直接貼り付ける
 - 定型文・クリップボード・絵文字のパネルを開いている間は、透けたパネルと重ならないよう、候補の帯も隠す（showPanel / hidePanel）
+
+## v0.28.11：SideStore への移行（途中）
+- iloader（Windows）で SideStore（Stable）を入れ、ペアリングファイルも置いた。LocalDevVPN（App Store）を入れて接続。SideStore の Apple ID サインインが -80045（Anisette 関係、SideStore 側の既知の不具合）で失敗したが、時間をあけて再試行して通った。通らないときは Settings → User Customizations で On-Device Anisette をオフにして再起動、Anisette Servers で Jkcoxson を選ぶ
+- ビルドの最後に、ipa を GitHub の「latest」リリースにも置く（毎回上書き、build.yml の Publish ipa to release）。iPhone の Safari で開いて保存し、SideStore の「＋」から入れる
+- 次にやること：SideStore から DuoFlick を入れ直す → entitlements（App Groups）と仮署名 → 設定の保存先を共有に → 新しい設定画面
