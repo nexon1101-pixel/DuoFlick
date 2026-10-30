@@ -437,37 +437,53 @@ final class KeyboardView: UIView {
         return a.count == 4 ? a.map { CGFloat($0) } : [0, 0, 0, 0]
     }()
 
-    /// 直前の文字キーのフリックと、そのあと⌫で消したかどうか
-    private struct LastFlick {
+    /// 打った文字キーの記録（タップは方向なし）
+    private struct FlickRecord {
         let keyID: String
         let dir: FlickDirection
-        let angle: CGFloat
-        let time: Date
-        var deleted = false
+        let angle: CGFloat?
     }
-    private var lastFlick: LastFlick?
+    /// 最近打った文字キー（新しい順に末尾）。⌫で消すたびに、末尾から取り出す
+    private var flickHistory: [FlickRecord] = []
+    /// ⌫で消した文字キー（打った順）。打ち直した文字と、前から順に突き合わせる
+    private var pendingDeleted: [FlickRecord] = []
+    private var lastDeleteTime = Date.distantPast
+    private static let retypeWindow: TimeInterval = 6
 
-    /// 文字キーを離したときに呼ぶ。フリック→⌫→同じキーを隣の方向へフリック、の流れを判定ミスとみなして境目をずらす
+    private func resetFlickHistory() {
+        flickHistory.removeAll()
+        pendingDeleted.removeAll()
+    }
+
+    /// 文字キーを離したときに呼ぶ。数文字打ってから⌫で消して打ち直したとき、同じ位置のキーが
+    /// 隣の方向に変わっていたら、判定ミスとみなして境目をずらす
     private func noteFlick(_ k: LaidKey, dir: FlickDirection, from s: CGPoint, to e: CGPoint) {
-        let now = Date()
-        defer {
-            if dir != .tap, let angle = flickAngle(k, from: s, to: e) {
-                lastFlick = LastFlick(keyID: k.def.id, dir: dir, angle: angle, time: now)
+        let angle: CGFloat? = dir == .tap ? nil : flickAngle(k, from: s, to: e)
+        if !pendingDeleted.isEmpty {
+            if Date().timeIntervalSince(lastDeleteTime) > Self.retypeWindow {
+                pendingDeleted.removeAll()
             } else {
-                lastFlick = nil
+                let old = pendingDeleted.removeFirst()
+                if old.keyID != k.def.id {
+                    // 別のキーを打った＝言い直しではなく打ち替えなので、突き合わせはやめる
+                    pendingDeleted.removeAll()
+                } else if settings.autoCorrect, let oldAngle = old.angle, angle != nil,
+                          dir != .tap, old.dir != .tap, dir != old.dir,
+                          let index = boundary(old.dir, dir) {
+                    learnBoundary(index, angle: oldAngle, towards: dir)
+                }
             }
         }
-        guard settings.autoCorrect, let last = lastFlick, last.deleted, last.keyID == k.def.id,
-              dir != .tap, dir != last.dir, now.timeIntervalSince(last.time) < 4,
-              let index = boundary(last.dir, dir) else { return }
-        learnBoundary(index, angle: last.angle, towards: dir)
+        flickHistory.append(FlickRecord(keyID: k.def.id, dir: dir, angle: angle))
+        if flickHistory.count > 12 { flickHistory.removeFirst() }
     }
 
     /// ⌫で1文字消したときに呼ぶ
     private func noteDelete() {
-        guard var last = lastFlick, !last.deleted else { lastFlick = nil; return }
-        last.deleted = true
-        lastFlick = last
+        guard let last = flickHistory.popLast() else { pendingDeleted.removeAll(); return }
+        if Date().timeIntervalSince(lastDeleteTime) > Self.retypeWindow { pendingDeleted.removeAll() }
+        pendingDeleted.insert(last, at: 0)
+        lastDeleteTime = Date()
     }
 
     /// 隣り合う2つの方向の間の境目の番号（0:右と上、1:上と左、2:左と下、3:下と右）
@@ -616,6 +632,7 @@ final class KeyboardView: UIView {
             guard let a = active.removeValue(forKey: t) else { continue }
             a.timer?.invalidate()
             a.cancelTimer?.invalidate()
+            if a.repeated { resetFlickHistory() }   // 長押しで連続して消したときは、対応が取れないので学習しない
             if a.key.def.isNumberPad {
                 // タップだけでは何も入れない。2回続けてタップすると数字を固定し、固定中にタップすると解除する
                 if a.numberStage == nil {
@@ -643,7 +660,6 @@ final class KeyboardView: UIView {
                 // フリックして改行・確定キーの上で少し止めてから離したら、キャンセル（何も入れない）
                 if let since = a.cancelSince, Date().timeIntervalSince(since) >= Self.cancelHold,
                    let over = hit(end), case .newline = over.def.action {
-                    lastFlick = nil
                     continue
                 }
                 let dir = direction(a.key, from: a.start, to: end)
@@ -653,7 +669,7 @@ final class KeyboardView: UIView {
                 } else if a.key.def.isDelete && dir == .tap {
                     noteDelete()
                 } else {
-                    lastFlick = nil
+                    resetFlickHistory()
                 }
                 onKey?(a.key.def, dir)
             }
