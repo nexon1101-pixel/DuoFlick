@@ -9,9 +9,19 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      # Duo の内側画面いっぱいに出すには、新しい SDK（iOS 27.1）でビルドする必要がある。入っている中でいちばん新しい Xcode を使う
+      - name: Select newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          best=$(ls -d /Applications/Xcode_[0-9]*.app | sort -V | tail -1)
+          echo "using $best"
+          sudo xcode-select -s "$best/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i ios
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -24,9 +34,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: deriv-${{ github.run_id }}
+          key: deriv27-${{ github.run_id }}
           restore-keys: |
-            deriv-
+            deriv27-
 
       - name: Build (unsigned)
         run: |
