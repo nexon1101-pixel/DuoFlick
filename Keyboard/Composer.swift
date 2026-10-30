@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import KanaKanjiConverterModuleWithDefaultDictionary
 
 /// 入力中のひらがなと変換候補を管理する。変換エンジンは azooKey（MIT License）を使う。
@@ -134,6 +135,8 @@ final class Composer {
     private static let punctuationVariants: [Character: [String]] = [
         "、": ["，", ",", "､"], "。": ["．", ".", "｡"], "？": ["?"], "！": ["!"], "「": ["｢"], "」": ["｣"],
     ]
+
+    private static let textChecker = UITextChecker()
 
     /// 読みで出す顔文字
     private static let kaomoji: [String: [String]] = [
@@ -610,6 +613,14 @@ final class Composer {
             // 先頭だけ大文字にした形も（例：hello → Hello）
             let cap = rawRoman.prefix(1).uppercased() + rawRoman.dropFirst()
             if cap != rawRoman, !have.contains(cap) { extras.append(cap) }
+            // 打ちかけの英単語の補完も出す（iOS標準の英単語補完。2文字以上のとき）
+            if rawRoman.count >= 2 {
+                let range = NSRange(location: 0, length: (rawRoman as NSString).length)
+                let words = Self.textChecker.completions(forPartialWordRange: range, in: rawRoman, language: "en_US") ?? []
+                for w in words.prefix(8) where w.lowercased() != rawRoman.lowercased() && !have.contains(w) && !extras.contains(w) {
+                    extras.append(w)
+                }
+            }
         } else if reading.count <= 24, reading.allSatisfy({ ("ぁ"..."ゖ").contains($0) || $0 == "ー" }) {
             // ひらがなだけ：半角カナを、候補の最後に足す
             let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
