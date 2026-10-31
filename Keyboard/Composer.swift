@@ -727,6 +727,35 @@ final class Composer {
         let words = nodes.prefix(8).map { $0.data.word }
         lines.append("辞書を直接：\(nodes.count)件 \(words.joined(separator: " "))")
         lines.append(dict.path)
+
+        // AI（Zenzai）：設定、モデルのファイル、いまの文脈、同じ読みをAIありなしで変換した結果
+        lines.append("――AI（Zenzai）――")
+        lines.append("設定：\(zenzai ? "オン" : "オフ")　高精度：\(zenzaiHigh ? "オン" : "オフ")")
+        for m in ["xsmall", "small"] {
+            let u = Bundle.main.bundleURL.appendingPathComponent("Zenz/\(m)/ggml-model-Q5_K_M.gguf")
+            let size = ((try? fm.attributesOfItem(atPath: u.path))?[.size] as? NSNumber)?.intValue ?? -1
+            lines.append("\(m)：\(size < 0 ? "なし" : "\(size / 1_000_000)MB")")
+        }
+        lines.append("使う文脈：「\(leftContext)」（\(leftContext.count)文字）")
+        var zt = ComposingText()
+        zt.insertAtCursorPosition("かいとう", inputStyle: .direct)
+        let ctx = leftContext.isEmpty ? "冷凍食品の" : leftContext
+        if let url = Self.zenzURL(high: zenzaiHigh) {
+            var zo = options
+            zo.zenzaiMode = .on(weight: url, inferenceLimit: 1, personalizationMode: nil,
+                                versionDependentMode: .v3(.init(leftSideContext: ctx)))
+            let t0 = Date()
+            let on = converter.requestCandidates(zt, options: zo).mainResults.prefix(5).map(\.text)
+            let sec = Date().timeIntervalSince(t0)
+            converter.stopComposition()
+            lines.append("「\(ctx)」＋かいとう（AIあり、\(String(format: "%.2f", sec))秒）：\(on.joined(separator: " / "))")
+            lines.append("状態：\(converter.zenzStatus)")
+        } else {
+            lines.append("モデルのファイルが見つからないため、AIは使われていません")
+        }
+        let off = converter.requestCandidates(zt, options: options).mainResults.prefix(5).map(\.text)
+        converter.stopComposition()
+        lines.append("かいとう（AIなし）：\(off.joined(separator: " / "))")
         return lines.joined(separator: "\n")
     }
 
