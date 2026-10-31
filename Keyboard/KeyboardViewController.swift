@@ -214,14 +214,14 @@ final class KeyboardViewController: UIInputViewController {
         guard type != lastKeyboardType else { return }
         lastKeyboardType = type
         switch type {
-        case .emailAddress, .URL, .asciiCapable, .twitter, .webSearch:
+        case .emailAddress, .URL, .asciiCapable, .twitter:
             japanese = false
             setMode(.qwerty)
         case .numberPad, .phonePad, .decimalPad, .numbersAndPunctuation, .namePhonePad, .asciiCapableNumberPad:
             japanese = false
             setMode(.symbol)
         default:
-            // ふつうの入力欄は、最後に使っていた文字種（かな／英字／英字のあモード）で開く
+            // ふつうの入力欄と検索欄（webSearch）は、最後に使っていた文字種（かな／英字／英字のあモード）で開く
             let last = SharedStore.defaults.string(forKey: Self.lastModeKey)
             if last == "qwerty" || last == "qwertyJa" {
                 japanese = (last == "qwertyJa")
