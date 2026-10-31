@@ -761,6 +761,16 @@ final class Composer {
                 lines.append("AIあり 回数\(limit)\(rich ? " rich" : "")（\(String(format: "%.2f", sec))秒）：\(on.joined(separator: " / "))")
             }
             lines.append("文脈：「\(ctx)」　状態：\(converter.zenzStatus)")
+            // モデルそのものが働いているかの確認：文脈のつづきの1文字を、モデルに直接予想させる
+            var po = options
+            po.zenzaiMode = .on(weight: url, inferenceLimit: 1, personalizationMode: nil,
+                                versionDependentMode: .v3(.init(leftSideContext: ctx)))
+            let nexts = converter.predictNextCharacter(leftSideContext: ctx, count: 6, options: po)
+            lines.append("モデルが予想する「\(ctx)」のつづき：" + (nexts.isEmpty ? "なし（モデルが働いていない）"
+                : nexts.map { "\($0.character)(\(Int($0.value * 100))%)" }.joined(separator: " ")))
+            let nexts2 = converter.predictNextCharacter(leftSideContext: "今日は天気が", count: 6, options: po)
+            lines.append("モデルが予想する「今日は天気が」のつづき：" + (nexts2.isEmpty ? "なし"
+                : nexts2.map { "\($0.character)(\(Int($0.value * 100))%)" }.joined(separator: " ")))
         } else {
             lines.append("モデルのファイルが見つからないため、AIは使われていません")
         }
