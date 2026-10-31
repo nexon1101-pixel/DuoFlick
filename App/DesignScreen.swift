@@ -315,7 +315,7 @@ struct DesignScreen: View {
     }
 
     private enum Tab: String, CaseIterable, Identifiable {
-        case layout = "配置", input = "入力", look = "見た目", data = "データ"
+        case layout = "配置", input = "入力", look = "見た目", words = "辞書・定型文", data = "データ"
         var id: String { rawValue }
     }
 
@@ -346,6 +346,8 @@ struct DesignScreen: View {
                     convertSection
                 case .look:
                     lookSection
+                case .words:
+                    WordsSections()
                 case .data:
                     presetSection
                     otherSection

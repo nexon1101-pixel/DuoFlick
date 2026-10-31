@@ -323,3 +323,10 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - ライブ変換がオンのとき、打った読み（ひらがな）を候補の帯の左端に小さく出す（押せない。CandidateBar.show の reading）。内側画面の標準配置では帯がないので、真ん中の候補エリアの上に出す（PanelModel.reading、MiddlePanel）。文節を選び直している間は、その文節の読みを出す（Composer.readingLabel）
 - ひらがなのまま入れたいときは、帯のいちばん最後にある「読みそのまま」の候補を押す。エンジンの候補にひらがなが無いときは、ライブ変換のときだけ足す（Composer.refresh の最後）
 - 実機での確認待ち
+
+## v0.35.2：辞書・定型文をアプリの設定画面に、iOS取り込みは洗い替え
+- v0.35.1 のビルドは成功
+- 設定画面に「辞書・定型文」タブを足した（App/WordsScreen.swift）。単語の登録（単語＋ひらがなの読み）・一覧（探す、スワイプで削除）、定型文の追加・固定・削除。変えるとすぐ保存し、SettingsSignal でキーボードに知らせる（「保存して反映」は不要）
+- UserDictionaryStore（Shared/UserDictionaryStore.swift）と TextListStore / PhraseStore（Shared/TextListStore.swift）を Shared/ へ移した。reload() を足し、キーボードは SettingsSignal と viewWillAppear で読み直す。ClipboardStore と RegisterModel はキーボード側に残した
+- iOSユーザ辞書の取り込みは洗い替え：UserWord に source（"ios"）を付け、取り込むたびに前の "ios" の語を消して入れ直す。自分で登録した語は消さない。iOSから1語も取れなかったときは何も変えない。v0.35.1 までに取り込んだ語は印がないので、1回だけ残る（手で消す）。取り込みの操作はキーボードの設定の辞書から（requestSupplementaryLexicon はキーボードからしか呼べない）
+- 実機での確認待ち（ビルドが通るかも未確認）

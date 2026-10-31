@@ -40,6 +40,8 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return }
             self.model.reload()
             self.keyboardView.grip = self.model.grip
+            self.dictionary.reload()
+            self.phrases.reload()
         }
 
         for v in [keyboardView, candidateBar, guideView] as [UIView] {
@@ -116,6 +118,8 @@ final class KeyboardViewController: UIInputViewController {
         // アプリ本体の設定画面で変えた設定を読み直す
         model.reload()
         keyboardView.grip = model.grip
+        dictionary.reload()
+        phrases.reload()
         applyKeyboardType()
         haptic.prepare()
         flickHaptic.prepare()
@@ -1356,7 +1360,7 @@ final class KeyboardViewController: UIInputViewController {
                     DispatchQueue.main.async {
                         let items = lexicon.entries.map { (word: $0.documentText, reading: $0.userInput) }
                         let n = self?.dictionary.importSystem(items) ?? 0
-                        done(n > 0 ? "\(n)語を取り込みました" : "取り込める語がありませんでした")
+                        done(n > 0 ? "\(n)語に入れ替えました" : "取り込める語がありませんでした")
                     }
                 }
             },
