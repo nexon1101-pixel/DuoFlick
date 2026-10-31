@@ -68,6 +68,7 @@ jobs:
             exit 1
           fi
           echo "patch target: $F"
+          chmod -R u+w build/SourcePackages/checkouts   # パッケージの取得先は読み取り専用
           python3 - "$F" <<'PY'
           import sys
           p = sys.argv[1]
