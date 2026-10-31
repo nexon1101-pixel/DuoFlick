@@ -1399,7 +1399,14 @@ final class KeyboardViewController: UIInputViewController {
             },
             onPhrases: { [weak self] in self?.showPhrases() },
             onClipboard: { [weak self] in self?.showClipboard() },
-            diagnose: { [weak self] in self?.composer.diagnostics() ?? "" },
+            diagnose: { [weak self] in
+                guard let self else { return "" }
+                // 診断の前に、いまの設定と文脈を変換エンジン側へ反映する（変換のときまで反映されないため）
+                self.composer.zenzai = self.model.settings.zenzai
+                self.composer.zenzaiHigh = self.model.settings.zenzaiHigh
+                self.updateLeftContext()
+                return self.composer.diagnostics()
+            },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
             onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
             onShowCorrection: { [weak self] in self?.showCorrection() },
