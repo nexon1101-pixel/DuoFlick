@@ -112,6 +112,8 @@ final class KeyboardView: UIView {
     var onCursor: ((Int) -> Void)?
     /// 空白キー長押し中の上下移動。負の値で上へ。
     var onCursorVertical: ((Int) -> Void)?
+    /// 空白キーを長押しして、動かさずに離したとき（変換中は、ひらがなにする）
+    var onSpaceHold: (() -> Void)?
 
     private(set) var keys: [LaidKey] = []
     private var keysBottom: CGFloat = 0
@@ -127,6 +129,8 @@ final class KeyboardView: UIView {
         var timer: Timer?
         var repeated = false
         var cursorMode = false
+        /// トラックパッド操作で、カーソルを動かしたか
+        var trackMoved = false
         /// 改行・確定キーの上に指が来た時刻（少し止めたときだけキャンセルにする）
         var cancelSince: Date?
         var cancelTimer: Timer?
@@ -789,8 +793,10 @@ final class KeyboardView: UIView {
             guard let self, let a, a.cursorMode else { return }
             let edge: CGFloat = 36
             if a.current.x > self.bounds.width - edge, a.current.x - a.start.x > 10 {
+                a.trackMoved = true
                 self.onCursor?(1)
             } else if a.current.x < edge, a.start.x - a.current.x > 10 {
+                a.trackMoved = true
                 self.onCursor?(-1)
             }
         }
@@ -827,6 +833,7 @@ final class KeyboardView: UIView {
             let lineStep: CGFloat = 6 * ptPerMM
             let lines = Int(a.accY / lineStep)
             if lines != 0 {
+                a.trackMoved = true
                 onCursorVertical?(lines)
                 a.accY -= CGFloat(lines) * lineStep
             }
@@ -836,6 +843,7 @@ final class KeyboardView: UIView {
             let stepPt: CGFloat = 2.0 * ptPerMM
             let steps = Int(a.accX / stepPt)
             if steps != 0 {
+                a.trackMoved = true
                 onCursor?(steps)
                 a.accX -= CGFloat(steps) * stepPt
             }
@@ -900,6 +908,9 @@ final class KeyboardView: UIView {
             if numberLocked, let digit = Self.numberKeyDigits[a.key.def.id] {
                 onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
                 continue
+            }
+            if a.cursorMode, !a.trackMoved, case .space = a.key.def.action {
+                onSpaceHold?()
             }
             if !a.repeated && !a.cursorMode {
                 let end = t.location(in: self)

@@ -3,6 +3,15 @@ import UIKit
 /// キーボード上部の変換候補の帯。横にスクロールできる。
 final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     static let height: CGFloat = 44
+    /// ライブ変換のとき、読みを出すために帯の上に足す余白
+    static let readingMargin: CGFloat = 15
+    /// 候補の上に空ける余白（読みを出すとき）
+    var topMargin: CGFloat = 0 {
+        didSet {
+            scrollTop.constant = topMargin
+            expandTop.constant = topMargin
+        }
+    }
 
     var onSelect: ((Int) -> Void)?
     /// 左上の読み（ひらがな）を押したとき
@@ -15,6 +24,8 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     private let scroll = UIScrollView()
     private let expandButton = UIButton(type: .system)
     private let stack = UIStackView()
+    private lazy var scrollTop = scroll.topAnchor.constraint(equalTo: topAnchor)
+    private lazy var expandTop = expandButton.topAnchor.constraint(equalTo: topAnchor)
     /// ライブ変換で、打った読みを帯の左上に小さく出す（高さは増やさない。押すとひらがなで確定）
     private let readingButton = UIButton(type: .system)
 
@@ -55,12 +66,12 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         ])
         NSLayoutConstraint.activate([
             expandButton.trailingAnchor.constraint(equalTo: trailingAnchor),
-            expandButton.topAnchor.constraint(equalTo: topAnchor),
+            expandTop,
             expandButton.bottomAnchor.constraint(equalTo: bottomAnchor),
             expandButton.widthAnchor.constraint(equalToConstant: 48),
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: expandButton.leadingAnchor),
-            scroll.topAnchor.constraint(equalTo: topAnchor),
+            scrollTop,
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 8),
             stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -8),
@@ -73,16 +84,16 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
 
     private func setupReadingButton() {
         var config = UIButton.Configuration.plain()
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 8)
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 8)
         readingButton.configuration = config
         readingButton.translatesAutoresizingMaskIntoConstraints = false
         readingButton.isHidden = true
         readingButton.addAction(UIAction { [weak self] _ in self?.onReading?() }, for: .touchUpInside)
         addSubview(readingButton)
         NSLayoutConstraint.activate([
-            readingButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            readingButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             readingButton.topAnchor.constraint(equalTo: topAnchor, constant: 0),
-            readingButton.heightAnchor.constraint(equalToConstant: 16),
+            readingButton.heightAnchor.constraint(equalToConstant: Self.readingMargin),
         ])
     }
 

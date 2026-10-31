@@ -18,6 +18,16 @@ final class KeyboardViewController: UIInputViewController {
     private var clipboardTimer: Timer?
     private var heightConstraint: NSLayoutConstraint?
     private var keyboardTop: NSLayoutConstraint?
+    private lazy var barHeight = candidateBar.heightAnchor.constraint(equalToConstant: CandidateBar.height)
+
+    /// 候補の帯の高さ。ライブ変換のときは、読みを出す余白のぶんだけ高くする
+    private func updateBarHeight() {
+        let margin = model.settings.liveConversion ? CandidateBar.readingMargin : 0
+        let h = CandidateBar.height + margin
+        if barHeight.constant != h { barHeight.constant = h }
+        candidateBar.topMargin = margin
+        if keyboardView.topInset != h { keyboardView.topInset = h }
+    }
     private var lastWidth: CGFloat = 0
     private var mode: InputMode = .kana
 
@@ -56,7 +66,7 @@ final class KeyboardViewController: UIInputViewController {
             candidateBar.topAnchor.constraint(equalTo: keyboardView.topAnchor),
             candidateBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             candidateBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            candidateBar.heightAnchor.constraint(equalToConstant: CandidateBar.height),
+            barHeight,
             // フリックの十字ガイドは帯の上にも重ねて描く
             guideView.topAnchor.constraint(equalTo: keyboardView.topAnchor),
             guideView.bottomAnchor.constraint(equalTo: keyboardView.bottomAnchor),
@@ -87,6 +97,7 @@ final class KeyboardViewController: UIInputViewController {
             guard let self, self.model.settings.haptics, self.hasFullAccess else { return }
             self.haptic.impactOccurred()
         }
+        keyboardView.onSpaceHold = { [weak self] in self?.spaceHold() }
         keyboardView.onCursor = { [weak self] steps in self?.cursorDrag(steps) }
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
@@ -265,6 +276,7 @@ final class KeyboardViewController: UIInputViewController {
         guard w > 0 else { return }
         if !force && w == lastWidth { return }
         lastWidth = w
+        updateBarHeight()
         let h = keyboardView.requiredHeight(for: w) + topHeight
         if heightConstraint?.constant != h { heightConstraint?.constant = h }
     }
@@ -706,6 +718,13 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// 空白キー長押しの左右：入力中なら文節の区切りを動かし、そうでなければカーソルを動かす
+    /// 空白キーを長押しして動かさずに離したとき：変換中なら、ひらがなのまま見せる（改行で確定）
+    private func spaceHold() {
+        guard register == nil, !composer.isEmpty else { return }
+        composer.showReadingOnly()
+        updateComposition()
+    }
+
     private func cursorDrag(_ steps: Int) {
         if register != nil { return }
         if !composer.isEmpty {

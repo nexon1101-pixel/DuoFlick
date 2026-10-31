@@ -99,6 +99,8 @@ final class Composer {
     private(set) var liveClauses: [LiveClause] = []
     /// liveClauses を作ったときの読み
     private var liveReading = ""
+    /// 空白の長押しで、変換せずひらがなのまま見せている間
+    private(set) var readingMode = false
     /// 文全体の先頭の候補が candidates の何番目か
     private var liveBestIndex = 0
     /// 選び直している文節の番号（nil なら文全体）
@@ -139,6 +141,10 @@ final class Composer {
             rest = rest.dropFirst(c.data.count)
         }
         guard pos == chars.count else { return }
+        // 漢字1文字になるだけのときは、ライブ変換しない（ひらがなのまま見せる）
+        let joined = out.map(\.text).joined()
+        if joined.count == 1, joined != reading,
+           joined.unicodeScalars.contains(where: { $0.value >= 0x4E00 && $0.value <= 0x9FFF }) { return }
         liveClauses = out
         liveReading = reading
         liveBestIndex = bi
@@ -163,6 +169,17 @@ final class Composer {
         reset()
         return text
     }
+
+    /// 変換せず、読みのひらがなのまま見せる（空白の長押し）。確定はしない
+    func showReadingOnly() {
+        guard !composing.isEmpty else { return }
+        readingMode = true
+        selectedIndex = nil
+        focusClause = nil
+    }
+
+    /// 帯の先頭に、前に選んだ記号などを出しているか
+    private var frontExtra: Bool { extraAt == 0 && !extras.isEmpty }
 
     /// 選び直している文節を、入力欄の下線の文字の中で選択して見せる範囲
     var markedHighlight: NSRange? {
@@ -249,6 +266,8 @@ final class Composer {
 
     /// 入力欄に下線付きで表示する文字
     var markedText: String {
+        if readingMode { return composing.convertTarget }
+        if frontExtra, focusClause == nil, selectedIndex == nil { return extras[0] }
         if focusClause == nil, let i = selectedIndex, i < displayCount {
             if let ci = candidateIndex(forDisplay: i) {
                 return candidates[ci].text + readingAfterSegment
@@ -273,6 +292,8 @@ final class Composer {
     /// 変換エンジンの候補のあいだに入れる候補（打った英字、数字の全角・漢数字）と、入れる位置
     private var extras: [String] = []
     private var extraAt = 2
+    /// 選んだ記憶を残せる種類の追加候補か（日付・時刻と、打った英字は対象外）
+    private var extrasRememberable = false
 
     private func withExtra(_ texts: [String]) -> [String] {
         guard !extras.isEmpty else { return texts }
@@ -503,6 +524,7 @@ final class Composer {
     /// 文節の区切り位置を動かす（空白キー長押しで左右）
     func moveSegment(by count: Int) {
         guard !composing.isEmpty else { return }
+        readingMode = false
         if liveConversion {
             refreshIfNeeded()
             if !liveClauses.isEmpty, liveReading == composing.convertTarget {
@@ -523,6 +545,7 @@ final class Composer {
 
     /// 空白キー：次の候補を選ぶ
     func selectNext() {
+        readingMode = false
         refreshIfNeeded()
         guard displayCount > 0 else { return }
         if focusClause != nil {
@@ -548,6 +571,7 @@ final class Composer {
         guard let ci = candidateIndex(forDisplay: index) else {
             // 打った英字のまま確定する
             let text = extraText(forDisplay: index) ?? composing.convertTarget
+            rememberExtra(text)
             reset()
             return text
         }
@@ -573,6 +597,12 @@ final class Composer {
 
     /// 選んでいる候補（なければひらがな）で全部確定する
     func commitAll() -> String {
+        if readingMode {
+            let t = composing.convertTarget
+            reset()
+            return t
+        }
+        if frontExtra, focusClause == nil, selectedIndex == nil { selectedIndex = 0 }
         if liveUsable, focusClause != nil || selectedIndex == nil {
             return commitLive()
         }
@@ -727,6 +757,18 @@ final class Composer {
         c.data.map(\.ruby).joined()
     }
 
+    /// 変換エンジンの候補ではない候補（句読点の半角・全角、数字の形、顔文字）を選んだとき、同じ読みの記憶に入れる
+    private func rememberExtra(_ text: String) {
+        guard extrasRememberable, extras.contains(text) else { return }
+        let reading = composing.convertTarget
+        let key = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
+        var list = chosen[key] ?? []
+        list.removeAll { $0 == text }
+        list.insert(text, at: 0)
+        chosen[key] = Array(list.prefix(5))
+        SharedStore.defaults.set(chosen, forKey: Self.chosenKey)
+    }
+
     private func remember(_ c: Candidate) {
         let key = readingKey(c)
         guard !key.isEmpty else { return }
@@ -762,6 +804,7 @@ final class Composer {
     /// 読みが変わったら、後でまとめて変換する（打鍵のたびに変換すると重いため）。
     /// 変換が終わるまでは前の候補を出したままにして、帯がちらつかないようにする。
     private func markDirty() {
+        readingMode = false
         needsRefresh = true
         focusClause = nil
         clauseAlts = []
@@ -814,6 +857,7 @@ final class Composer {
         guard !isSegmented else { return }
         let reading = composing.convertTarget
         let have = Set(candidates.map(\.text))
+        extrasRememberable = false
         if reading == "きょう" || reading == "いま" {
             // 今日の日付と今の時刻（変換エンジンの候補にない形だけ足す）
             extraAt = 1
@@ -821,13 +865,16 @@ final class Composer {
         } else if let list = Self.kaomoji[reading] {
             // 顔文字（読みがそのまま合うとき）。先頭の候補のすぐあとに出す
             extraAt = 1
+            extrasRememberable = true
             for v in list where !have.contains(v) { extras.append(v) }
         } else if reading.count == 1, let c = reading.first, let list = Self.punctuationVariants[c] {
             extraAt = 1
+            extrasRememberable = true
             for v in list where !have.contains(v) { extras.append(v) }
         } else if reading.allSatisfy({ $0.isASCII && $0.isNumber }) {
             // 数字だけ：全角と漢数字を、先頭の候補のすぐあとに出す
             extraAt = 1
+            extrasRememberable = true
             for v in Self.numberVariants(reading) where !have.contains(v) && !extras.contains(v) { extras.append(v) }
         } else if rawValid, !rawRoman.isEmpty, rawRoman.allSatisfy({ $0.isASCII }),
                   rawRoman != reading {
@@ -842,6 +889,15 @@ final class Composer {
             if let half = kata.applyingTransform(.fullwidthToHalfwidth, reverse: false), half != kata, !have.contains(half) {
                 extraAt = 10_000
                 extras = [half]
+            }
+        }
+        // 前に選んだ記号・数字の形・顔文字が、いちばん新しい記憶なら、帯の先頭に出す
+        if extrasRememberable, !extras.isEmpty {
+            let key = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
+            if let first = chosen[key]?.first, let k = extras.firstIndex(of: first) {
+                extras.remove(at: k)
+                extras.insert(first, at: 0)
+                extraAt = 0
             }
         }
     }
