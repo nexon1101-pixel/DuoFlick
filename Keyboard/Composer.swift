@@ -873,8 +873,14 @@ final class Composer {
             let n = reading.count
             let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
             let exact = found.filter { $0.rubyCount == n && !$0.data.isEmpty }
-            let plain = exact.filter { $0.text == kata || $0.text == reading }
-            let others = exact.filter { $0.text != kata && $0.text != reading }
+            // 伸ばす棒（ー）を波線（〜 ～ ~）にしただけの候補（うーん→ウ~ン）も、読みそのままとみなす
+            func norm(_ t: String) -> String {
+                String(t.map { "〜～~∼".contains($0) ? "ー" : $0 })
+            }
+            let nk = norm(kata), nr = norm(reading)
+            func isPlain(_ c: Candidate) -> Bool { let t = norm(c.text); return t == nk || t == nr }
+            let plain = exact.filter(isPlain)
+            let others = exact.filter { !isPlain($0) }
             let rest = found.filter { !($0.rubyCount == n && !$0.data.isEmpty) }
             found = others + plain + rest
         }
