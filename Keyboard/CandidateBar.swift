@@ -5,8 +5,6 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     static let height: CGFloat = 44
 
     var onSelect: ((Int) -> Void)?
-    /// 左端の読み（ひらがな）を押したとき
-    var onReading: (() -> Void)?
     /// 右端の∨／∧ボタン（候補の一覧を開く・閉じる）
     var onExpand: (() -> Void)?
     /// 帯を下にフリックしたとき（キーボードを閉じる）
@@ -113,21 +111,6 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         for v in stack.arrangedSubviews {
             stack.removeArrangedSubview(v)
             v.removeFromSuperview()
-        }
-        // ライブ変換：打った読みを、左端に小さく出す。押すと、ひらがなのまま確定する
-        if let reading, !reading.isEmpty, !list.isEmpty {
-            var config = UIButton.Configuration.gray()
-            var title = AttributedString(reading)
-            title.font = UIFont.systemFont(ofSize: 13)
-            config.attributedTitle = title
-            config.baseForegroundColor = Palette.text.withAlphaComponent(0.7)
-            config.cornerStyle = .capsule
-            config.contentInsets = NSDirectionalEdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10)
-            let b = UIButton(configuration: config)
-            b.addAction(UIAction { [weak self] _ in self?.onReading?() }, for: .touchUpInside)
-            b.setContentCompressionResistancePriority(.required, for: .horizontal)
-            b.setContentHuggingPriority(.required, for: .horizontal)
-            stack.addArrangedSubview(b)
         }
         for (i, text) in items.prefix(Self.maxItems).enumerated() {
             var config = UIButton.Configuration.plain()

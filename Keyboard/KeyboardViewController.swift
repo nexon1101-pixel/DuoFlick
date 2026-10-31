@@ -24,6 +24,11 @@ final class KeyboardViewController: UIInputViewController {
     /// キーボードの上に重ねて出す画面（調整バー・単語登録）
     private var topHost: UIViewController?
     private var topHeight: CGFloat = 0
+    /// ライブ変換で、打った読みを出す細い段（候補の帯の上。押すとひらがなで確定）
+    private let readingStrip = UIView()
+    private let readingChip = UIButton(type: .system)
+    private var stripHeight: CGFloat = 0
+    private static let stripH: CGFloat = 26
     private let adjustHeight: CGFloat = 92
     private let registerHeight: CGFloat = 112
     private var register: RegisterModel?
@@ -66,6 +71,7 @@ final class KeyboardViewController: UIInputViewController {
         let top = keyboardView.topAnchor.constraint(equalTo: view.topAnchor)
         top.isActive = true
         keyboardTop = top
+        setupReadingStrip()
 
         let height = view.heightAnchor.constraint(equalToConstant: 300)
         height.priority = UILayoutPriority(999)
@@ -90,7 +96,6 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.onCursor = { [weak self] steps in self?.cursorDrag(steps) }
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
-        candidateBar.onReading = { [weak self] in self?.commitReadingAsIs() }
         candidateBar.onExpand = { [weak self] in self?.toggleCandidateList() }
         candidateBar.onSwipeDown = { [weak self] in
             // 帯を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
@@ -265,7 +270,8 @@ final class KeyboardViewController: UIInputViewController {
         guard w > 0 else { return }
         if !force && w == lastWidth { return }
         lastWidth = w
-        let h = keyboardView.requiredHeight(for: w) + topHeight
+        updateStrip()
+        let h = keyboardView.requiredHeight(for: w) + topHeight + (topHost == nil ? stripHeight : 0)
         if heightConstraint?.constant != h { heightConstraint?.constant = h }
     }
 
@@ -1021,7 +1027,8 @@ final class KeyboardViewController: UIInputViewController {
 
     private func showBar(_ items: [String], selected: Int?, dimmed: Bool = false) {
         let reading = composer.isEmpty ? nil : composer.readingLabel
-        candidateBar.show(items, selected: selected, dimmed: dimmed, reading: reading)
+        candidateBar.show(items, selected: selected, dimmed: dimmed)
+        setReading(items.isEmpty ? nil : reading)
         panelModel.items = Array((composer.isEmpty ? items : composer.listTexts).prefix(60))
         panelModel.selected = selected
         panelModel.reading = reading ?? ""
@@ -1439,9 +1446,52 @@ final class KeyboardViewController: UIInputViewController {
         host.removeFromParent()
         topHost = nil
         topHeight = 0
-        let top = keyboardView.topAnchor.constraint(equalTo: view.topAnchor)
+        let top = keyboardView.topAnchor.constraint(equalTo: view.topAnchor, constant: stripHeight)
         top.isActive = true
         keyboardTop = top
         updateHeight(force: true)
+    }
+
+    // MARK: - 読みの段（ライブ変換）
+
+    private func setupReadingStrip() {
+        readingStrip.translatesAutoresizingMaskIntoConstraints = false
+        readingStrip.isHidden = true
+        view.addSubview(readingStrip)
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .capsule
+        config.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10)
+        readingChip.configuration = config
+        readingChip.translatesAutoresizingMaskIntoConstraints = false
+        readingChip.isHidden = true
+        readingChip.addAction(UIAction { [weak self] _ in self?.commitReadingAsIs() }, for: .touchUpInside)
+        readingStrip.addSubview(readingChip)
+        NSLayoutConstraint.activate([
+            readingStrip.topAnchor.constraint(equalTo: view.topAnchor),
+            readingStrip.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            readingStrip.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            readingStrip.heightAnchor.constraint(equalToConstant: Self.stripH),
+            readingChip.leadingAnchor.constraint(equalTo: readingStrip.leadingAnchor, constant: 8),
+            readingChip.centerYAnchor.constraint(equalTo: readingStrip.centerYAnchor),
+            readingChip.trailingAnchor.constraint(lessThanOrEqualTo: readingStrip.trailingAnchor, constant: -8),
+        ])
+    }
+
+    /// 段を出すか決める。ライブ変換がオンで、真ん中に候補を出す配置ではないときだけ
+    private func updateStrip() {
+        let on = model.settings.liveConversion
+            && !KeyboardLayout.usesIOS(model.settings, keyboardView.mode, model.grip, view.bounds.width)
+        stripHeight = on ? Self.stripH : 0
+        readingStrip.isHidden = !on || topHost != nil
+        if topHost == nil { keyboardTop?.constant = stripHeight }
+    }
+
+    private func setReading(_ text: String?) {
+        guard let text, !text.isEmpty else { readingChip.isHidden = true; return }
+        var title = AttributedString(text)
+        title.font = UIFont.systemFont(ofSize: 13)
+        readingChip.configuration?.attributedTitle = title
+        readingChip.configuration?.baseForegroundColor = Palette.text.withAlphaComponent(0.75)
+        readingChip.isHidden = false
     }
 }
