@@ -4,6 +4,8 @@ import SwiftUI
 final class PanelModel: ObservableObject {
     @Published var items: [String] = []
     @Published var selected: Int?
+    /// ライブ変換で、打った読みを小さく出す
+    @Published var reading: String = ""
 }
 
 struct MiddlePanel: View {
@@ -12,6 +14,25 @@ struct MiddlePanel: View {
     var onSwipeDown: (() -> Void)? = nil
 
     var body: some View {
+        VStack(spacing: 0) {
+            if !model.reading.isEmpty, !model.items.isEmpty {
+                Text(model.reading)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(uiColor: Palette.text).opacity(0.55))
+                    .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 18, alignment: .leading)
+            }
+            list
+        }
+        .id(model.items.isEmpty)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .animation(.easeOut(duration: 0.18), value: model.items.isEmpty)
+        .background(Color.gray.opacity(0.28))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var list: some View {
         LazyFlow(items: model.items, font: .systemFont(ofSize: 20), hPad: 12, minWidth: 52, rowHeight: 44) { i, text in
             Button { onSelect(i) } label: {
                 Text(text)
@@ -36,10 +57,5 @@ struct MiddlePanel: View {
                 }
             }
         )
-        .id(model.items.isEmpty)
-        .transition(.move(edge: .top).combined(with: .opacity))
-        .animation(.easeOut(duration: 0.18), value: model.items.isEmpty)
-        .background(Color.gray.opacity(0.28))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

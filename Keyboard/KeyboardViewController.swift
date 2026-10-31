@@ -1015,9 +1015,11 @@ final class KeyboardViewController: UIInputViewController {
     private var middleHost: UIHostingController<MiddlePanel>?
 
     private func showBar(_ items: [String], selected: Int?, dimmed: Bool = false) {
-        candidateBar.show(items, selected: selected, dimmed: dimmed)
+        let reading = composer.isEmpty ? nil : composer.readingLabel
+        candidateBar.show(items, selected: selected, dimmed: dimmed, reading: reading)
         panelModel.items = Array((composer.isEmpty ? items : composer.listTexts).prefix(60))
         panelModel.selected = selected
+        panelModel.reading = reading ?? ""
     }
 
     private func updateMiddlePanel(_ rect: CGRect?) {

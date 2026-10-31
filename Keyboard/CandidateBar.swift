@@ -83,13 +83,15 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     private var shownSelected: Int?
 
     private var shownDimmed = false
+    private var shownReading: String?
     private lazy var centerWidth = stack.widthAnchor.constraint(greaterThanOrEqualTo: scroll.frameLayoutGuide.widthAnchor, constant: -16)
 
     /// dimmed が true のときは、文字を薄いグレーにする（「コピー内容の貼り付け」など、候補ではない案内用）
-    func show(_ items: [String], selected: Int?, dimmed: Bool = false) {
+    func show(_ items: [String], selected: Int?, dimmed: Bool = false, reading: String? = nil) {
         let list = Array(items.prefix(Self.maxItems))
         // 同じ内容なら作り直さない（ちらつきと無駄な処理を防ぐ）
-        if list == shownItems && selected == shownSelected && dimmed == shownDimmed { return }
+        if list == shownItems && selected == shownSelected && dimmed == shownDimmed && reading == shownReading { return }
+        shownReading = reading
         shownDimmed = dimmed
         // 案内（コピー内容の貼り付けなど）は、帯の真ん中に出す
         centerWidth.isActive = dimmed
@@ -109,6 +111,16 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         for v in stack.arrangedSubviews {
             stack.removeArrangedSubview(v)
             v.removeFromSuperview()
+        }
+        // ライブ変換：打った読みを、左端に小さく出す（押せない）
+        if let reading, !reading.isEmpty, !list.isEmpty {
+            let label = UILabel()
+            label.text = reading
+            label.font = UIFont.systemFont(ofSize: 12)
+            label.textColor = Palette.text.withAlphaComponent(0.55)
+            label.setContentCompressionResistancePriority(.required, for: .horizontal)
+            label.setContentHuggingPriority(.required, for: .horizontal)
+            stack.addArrangedSubview(label)
         }
         for (i, text) in items.prefix(Self.maxItems).enumerated() {
             var config = UIButton.Configuration.plain()
@@ -137,9 +149,9 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
                 self.stack.transform = .identity
             }
         }
-        if let s = selected, s < stack.arrangedSubviews.count {
+        if let s = selected, let target = stack.arrangedSubviews.first(where: { ($0 as? UIButton)?.tag == s }) {
             layoutIfNeeded()
-            scroll.scrollRectToVisible(stack.arrangedSubviews[s].frame.insetBy(dx: -40, dy: 0), animated: true)
+            scroll.scrollRectToVisible(target.frame.insetBy(dx: -40, dy: 0), animated: true)
         } else {
             scroll.setContentOffset(.zero, animated: false)
         }

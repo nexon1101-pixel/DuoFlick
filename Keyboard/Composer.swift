@@ -144,6 +144,13 @@ final class Composer {
         liveBestIndex = bi
     }
 
+    /// ライブ変換で、帯に小さく出す読み。文節を選び直している間は、その文節の読み
+    var readingLabel: String? {
+        guard liveConversion, !composing.isEmpty else { return nil }
+        if let k = focusClause, k < liveClauses.count { return liveClauses[k].reading }
+        return composing.convertTarget
+    }
+
     /// 選び直している文節を、入力欄の下線の文字の中で選択して見せる範囲
     var markedHighlight: NSRange? {
         guard let k = focusClause, liveUsable, k < liveClauses.count else { return nil }
@@ -808,6 +815,15 @@ final class Composer {
             if let half = kata.applyingTransform(.fullwidthToHalfwidth, reverse: false), half != kata, !have.contains(half) {
                 extraAt = 10_000
                 extras = [half]
+            }
+        }
+        // ライブ変換：ひらがなのまま入れたいとき用に、読みそのものを候補の最後に足す
+        if liveConversion, !have.contains(reading), !extras.contains(reading) {
+            if extras.isEmpty {
+                extraAt = 10_000
+                extras = [reading]
+            } else if extraAt >= 10_000 {
+                extras.insert(reading, at: 0)
             }
         }
     }
