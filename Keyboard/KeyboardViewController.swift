@@ -218,8 +218,27 @@ final class KeyboardViewController: UIInputViewController {
             japanese = false
             setMode(.symbol)
         default:
-            setMode(.kana)
+            // ふつうの入力欄は、最後に使っていた文字種（かな／英字／英字のあモード）で開く
+            let last = SharedStore.defaults.string(forKey: Self.lastModeKey)
+            if last == "qwerty" || last == "qwertyJa" {
+                japanese = (last == "qwertyJa")
+                setMode(.qwerty)
+            } else {
+                setMode(.kana)
+            }
         }
+    }
+
+    private static let lastModeKey = "DuoFlick.lastMode.v1"
+    /// 自分で切り替えたときだけ、最後の文字種として覚える（メール欄などで自動で変わったときは覚えない）
+    private func saveLastMode() {
+        let v: String
+        switch mode {
+        case .kana: v = "kana"
+        case .qwerty: v = japanese ? "qwertyJa" : "qwerty"
+        default: return
+        }
+        SharedStore.defaults.set(v, forKey: Self.lastModeKey)
     }
 
     private func setMode(_ m: InputMode) {
@@ -375,6 +394,7 @@ final class KeyboardViewController: UIInputViewController {
             updateShiftDisplay()
         case .layer(let m):
             setMode(m)
+            saveLastMode()
         case .widthToggle:
             // パソコンの全角／半角キーと同じ：日本語（ローマ字かな）⇄英字
             commitAll()
@@ -391,6 +411,7 @@ final class KeyboardViewController: UIInputViewController {
             } else {
                 lastWidthTap = now
             }
+            saveLastMode()
         case .splitKeys:
             setSplit(true)
         case .cursorRight:
@@ -441,6 +462,7 @@ final class KeyboardViewController: UIInputViewController {
             }
         case .modeSwitch:
             setMode(mode.next)
+            saveLastMode()
         case .settings:
             toggleSettings()
         case .nextKeyboard:
