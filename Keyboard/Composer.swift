@@ -918,8 +918,8 @@ final class Composer {
         var found = converter.requestCandidates(target, options: requestOptions).mainResults
         // 絵文字の候補は出さない（顔文字は、読みから足す処理をやめた）
         found = found.filter { c in !c.text.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x2000) } }
-        if liveConversion, !isSegmented {
-            // ライブ変換：読み全体の候補を、読みの続きを補った予測より先に並べる（帯の先頭を、下線の文字と同じにする）。
+        if liveConversion || zenzai, !isSegmented {
+            // ライブ変換・AI変換：読み全体の候補を、読みの続きを補った予測より先に並べる（帯の先頭を、下線の文字と同じにする）。
             // 読みをそのままカタカナ・ひらがなにしただけの候補は、ほかの候補のあとに回す
             let reading = composing.convertTarget
             let n = reading.count
