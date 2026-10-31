@@ -866,6 +866,8 @@ final class Composer {
         var requestOptions = requestOptionsForConvert()
         requestOptions.needTypoCorrection = typoCorrection
         var found = converter.requestCandidates(target, options: requestOptions).mainResults
+        // 絵文字の候補は出さない（顔文字は、読みから足す処理をやめた）
+        found = found.filter { c in !c.text.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x2000) } }
         if liveConversion, !isSegmented {
             // ライブ変換：読み全体の候補を、読みの続きを補った予測より先に並べる（帯の先頭を、下線の文字と同じにする）。
             // 読みをそのままカタカナ・ひらがなにしただけの候補は、ほかの候補のあとに回す
@@ -895,11 +897,6 @@ final class Composer {
             // 今日の日付と今の時刻（変換エンジンの候補にない形だけ足す）
             extraAt = 1
             for v in Self.dateTimeCandidates(for: reading) where !have.contains(v) { extras.append(v) }
-        } else if let list = Self.kaomoji[reading] {
-            // 顔文字（読みがそのまま合うとき）。先頭の候補のすぐあとに出す
-            extraAt = 1
-            extrasRememberable = true
-            for v in list where !have.contains(v) { extras.append(v) }
         } else if reading.count == 1, let c = reading.first, let list = Self.punctuationVariants[c] {
             extraAt = 1
             extrasRememberable = true
