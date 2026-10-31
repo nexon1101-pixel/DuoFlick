@@ -169,7 +169,7 @@ final class KeyboardViewController: UIInputViewController {
     /// 送った文字の続きが候補に出続けた。入力欄が空になったら、予測と「直前の確定」を捨てる
     private var emptyCheckWork: DispatchWorkItem?
     private var contextSeen = false
-    private func scheduleEmptyCheck() {
+    private func scheduleEmptyCheck(after delay: TimeInterval = 0.4) {
         emptyCheckWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -178,7 +178,7 @@ final class KeyboardViewController: UIInputViewController {
             let after = proxy.documentContextAfterInput ?? ""
             // 変換待ちのまま送信されたとき：アプリが下線付きの文字ごと入力欄を空にしている。読みと候補を捨てる
             if !self.composer.isEmpty {
-                if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty {
+                if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty, !proxy.hasText {
                     self.composer.reset()
                     self.markedActive = false
                     self.markedVisible = false
@@ -186,6 +186,9 @@ final class KeyboardViewController: UIInputViewController {
                     self.keyboardView.resetFlickHistory()
                     self.hideCandidateList()
                     self.refreshBar()
+                } else if self.markedActive, self.markedVisible {
+                    // 入力欄が変わったと知らされないアプリもあるので、変換待ちのあいだは見張り続ける
+                    self.scheduleEmptyCheck(after: 0.6)
                 }
                 return
             }
@@ -201,7 +204,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         emptyCheckWork = work
         // 確定の直後は、入力欄の中身が反映される前に呼ばれることがあるので、少し待ってから確かめる
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     /// 入力欄の種類に合わせて、最初の文字種を選ぶ
@@ -754,7 +757,11 @@ final class KeyboardViewController: UIInputViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self, self.markedActive, !self.composer.isEmpty else { return }
             let p = self.textDocumentProxy
-            if !(p.documentContextBeforeInput ?? "").isEmpty { self.markedVisible = true }
+            // 文脈が空でも、hasText で下線付きの文字を数えるアプリがある（LINE など）
+            if !(p.documentContextBeforeInput ?? "").isEmpty || p.hasText {
+                self.markedVisible = true
+                self.scheduleEmptyCheck(after: 0.6)
+            }
         }
     }
     private var markedVisible = false
