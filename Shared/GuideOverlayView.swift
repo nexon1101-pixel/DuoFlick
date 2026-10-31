@@ -89,10 +89,10 @@ final class GuideOverlayView: UIView {
                 let lo: CGFloat = (w / 2 + inset - gx) / w
                 let hi: CGFloat = (bounds.width - w / 2 - inset - gx) / w
                 if lo <= hi { cells = cells.map { ($0.0, min(max($0.1, lo), hi), $0.2) } }
-                let halfH: CGFloat = 1.5 * h
-                let minY: CGFloat = halfH + inset
-                let maxY: CGFloat = bounds.height - halfH - inset
-                if minY <= maxY { gy = min(max(gy, minY), maxY) }
+                // 縦も同じ。上の段のキーで上に場所がないとき、十字全体を下へずらさず、はみ出す候補だけを内側へ寄せる
+                let loY: CGFloat = (h / 2 + inset - gy) / h
+                let hiY: CGFloat = (bounds.height - h / 2 - inset - gy) / h
+                if loY <= hiY { cells = cells.map { ($0.0, $0.1, min(max($0.2, loY), hiY)) } }
             } else {
                 // 傾いたキー：実際に文字のある方向だけの外枠（回したあと）がビューに収まるよう、最小限だけずらす
                 var minOx: CGFloat = 0, maxOx: CGFloat = 0, minOy: CGFloat = 0, maxOy: CGFloat = 0
