@@ -778,6 +778,12 @@ final class KeyboardViewController: UIInputViewController {
     private func insertCommitted(_ text: String) {
         textDocumentProxy.insertText(text)
         markedActive = false
+        // 括弧の対だけを確定したときは、中にカーソルを置く（続きの変換が残っているときは動かさない）
+        cursorInsidePair = false
+        if composer.isEmpty, text.count == 2, Self.pairTexts.contains(text) {
+            textDocumentProxy.adjustTextPosition(byCharacterOffset: -1)
+            cursorInsidePair = true
+        }
         // この入力欄が文脈を返せるか確かめておく（返せないアプリでは、空になったかどうかを判断しない）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self else { return }
@@ -965,6 +971,11 @@ final class KeyboardViewController: UIInputViewController {
     /// 括弧を対で入れた直後の、閉じ括弧
     private var pairClose: String?
     private static let bracketPairs = ["(": ")", "[": "]", "{": "}"]
+    /// 変換候補として出る括弧の対（確定したら中にカーソルを置く）
+    private static let pairTexts: Set<String> = [
+        "()", "[]", "{}", "<>", "（）", "［］", "｛｝", "＜＞", "「」", "『』", "【】", "〔〕", "〈〉", "《》", "“”", "‘’", "\"\"", "''"
+    ]
+    private var cursorInsidePair = false
     private static let mailDomains = [
         "gmail.com", "icloud.com", "yahoo.co.jp", "outlook.jp", "outlook.com", "docomo.ne.jp",
         "ezweb.ne.jp", "au.com", "softbank.ne.jp", "i.softbank.jp", "hotmail.co.jp", "hotmail.com",
@@ -1101,7 +1112,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
         insertCommitted(text)
         if composer.isEmpty {
-            lastCommit = (text, reading)
+            lastCommit = cursorInsidePair ? nil : (text, reading)   // カーソルが括弧の中にあると取り消せないので覚えない
             refreshBar()
             schedulePredictions()
         } else {
@@ -1115,7 +1126,7 @@ final class KeyboardViewController: UIInputViewController {
         let text = composer.commitAll()
         keyboardView.resetFlickHistory()
         insertCommitted(text)
-        lastCommit = (text, reading)
+        lastCommit = cursorInsidePair ? nil : (text, reading)
         refreshBar()
         schedulePredictions()
     }
