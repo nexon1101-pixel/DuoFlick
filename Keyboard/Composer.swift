@@ -90,6 +90,8 @@ final class Composer {
     var zenzai = false
     /// カーソルより前の文章（Zenzai に文脈として渡す）
     var leftContext = ""
+    /// 直近の変換で、AIに渡した文脈（診断用）
+    private(set) var lastZenzContext: String? = nil
     /// 大きいモデル（small）を使うか
     var zenzaiHigh = false
     private static func zenzURL(high: Bool) -> URL? {
@@ -103,6 +105,7 @@ final class Composer {
     /// いまの設定を反映した、変換のときの設定
     private func requestOptionsForConvert() -> ConvertRequestOptions {
         var o = options
+        if zenzai { lastZenzContext = leftContext }   // 診断で見せる（実際の変換で渡した文脈）
         if zenzai, let url = Self.zenzURL(high: zenzaiHigh) {
             o.zenzaiMode = .on(
                 weight: url,
@@ -736,7 +739,12 @@ final class Composer {
             let size = ((try? fm.attributesOfItem(atPath: u.path))?[.size] as? NSNumber)?.intValue ?? -1
             lines.append("\(m)：\(size < 0 ? "なし" : "\(size / 1_000_000)MB")")
         }
-        lines.append("使う文脈：「\(leftContext)」（\(leftContext.count)文字）")
+        lines.append("いまの文脈：「\(leftContext)」（\(leftContext.count)文字。設定画面を開いているときは空）")
+        if let c = lastZenzContext {
+            lines.append("直近の変換で渡した文脈：「\(c)」（\(c.count)文字）")
+        } else {
+            lines.append("直近の変換で渡した文脈：まだ変換していない")
+        }
         var zt = ComposingText()
         zt.insertAtCursorPosition("かいとう", inputStyle: .direct)
         let ctx = leftContext.isEmpty ? "冷凍食品の" : leftContext
