@@ -30,11 +30,13 @@ jobs:
       # Zenzai（AIモデル）のモデルを取り込む。ファイルはリポジトリに置かず、ビルドのたびに取得する
       - name: Download Zenzai model
         run: |
-          mkdir -p Keyboard/Zenz
-          curl -L --fail --retry 3 -o Keyboard/Zenz/ggml-model-Q5_K_M.gguf \
-            https://huggingface.co/Miwa-Keita/zenz-v3.1-xsmall-gguf/resolve/main/ggml-model-Q5_K_M.gguf
-          ls -l Keyboard/Zenz
-          test "$(stat -f%z Keyboard/Zenz/ggml-model-Q5_K_M.gguf)" -gt 10000000
+          for m in xsmall small; do
+            mkdir -p Keyboard/Zenz/$m
+            curl -L --fail --retry 3 -o Keyboard/Zenz/$m/ggml-model-Q5_K_M.gguf \
+              https://huggingface.co/Miwa-Keita/zenz-v3.1-$m-gguf/resolve/main/ggml-model-Q5_K_M.gguf
+            ls -l Keyboard/Zenz/$m
+            test "$(stat -f%z Keyboard/Zenz/$m/ggml-model-Q5_K_M.gguf)" -gt 10000000
+          done
 
       - name: Generate Xcode project
         run: |

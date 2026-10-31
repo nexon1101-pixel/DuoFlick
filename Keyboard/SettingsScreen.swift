@@ -127,6 +127,7 @@ struct SettingsScreen: View {
                 Toggle("続けてタップで文字を切り替え", isOn: $model.settings.toggleTap)
                 Toggle("ずれ補正（押す位置と斜めのくせ）", isOn: $model.settings.autoCorrect)
                 Toggle("AIで変換（試験的）", isOn: $model.settings.zenzai)
+                Toggle("AIを高精度にする（重い）", isOn: $model.settings.zenzaiHigh)
                 Toggle("ライブ変換", isOn: $model.settings.liveConversion)
                 Toggle("打ち間違いの候補（試験的）", isOn: $model.settings.typoCorrection)
                 Toggle("内側画面の片手持ちをiOS標準の配置にする", isOn: $model.settings.iosLayout)

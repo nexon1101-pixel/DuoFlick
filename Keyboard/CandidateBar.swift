@@ -4,7 +4,7 @@ import UIKit
 final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     static let height: CGFloat = 44
     /// ライブ変換のとき、読みを出すために帯の上に足す余白
-    static let readingMargin: CGFloat = 15
+    static let readingMargin: CGFloat = 8
     /// 候補の上に空ける余白（読みを出すとき）
     var topMargin: CGFloat = 0 {
         didSet {
@@ -93,7 +93,7 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         NSLayoutConstraint.activate([
             readingButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             readingButton.topAnchor.constraint(equalTo: topAnchor, constant: 0),
-            readingButton.heightAnchor.constraint(equalToConstant: Self.readingMargin),
+            readingButton.heightAnchor.constraint(equalToConstant: 14)   // 余白より少し高く、候補の上の空きに重ねる,
         ])
     }
 

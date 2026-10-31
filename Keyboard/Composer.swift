@@ -90,14 +90,20 @@ final class Composer {
     var zenzai = false
     /// カーソルより前の文章（Zenzai に文脈として渡す）
     var leftContext = ""
-    private static let zenzURL: URL? = {
-        let u = Bundle.main.bundleURL.appendingPathComponent("Zenz/ggml-model-Q5_K_M.gguf", isDirectory: false)
-        return FileManager.default.fileExists(atPath: u.path) ? u : nil
-    }()
+    /// 大きいモデル（small）を使うか
+    var zenzaiHigh = false
+    private static func zenzURL(high: Bool) -> URL? {
+        let dir = high ? "small" : "xsmall"
+        let u = Bundle.main.bundleURL.appendingPathComponent("Zenz/\(dir)/ggml-model-Q5_K_M.gguf", isDirectory: false)
+        if FileManager.default.fileExists(atPath: u.path) { return u }
+        // 大きいモデルがないときは、小さいモデルを使う
+        let small = Bundle.main.bundleURL.appendingPathComponent("Zenz/xsmall/ggml-model-Q5_K_M.gguf", isDirectory: false)
+        return FileManager.default.fileExists(atPath: small.path) ? small : nil
+    }
     /// いまの設定を反映した、変換のときの設定
     private func requestOptionsForConvert() -> ConvertRequestOptions {
         var o = options
-        if zenzai, let url = Self.zenzURL {
+        if zenzai, let url = Self.zenzURL(high: zenzaiHigh) {
             o.zenzaiMode = .on(
                 weight: url,
                 inferenceLimit: 1,

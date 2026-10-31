@@ -57,6 +57,8 @@ struct KeyboardSettings: Codable, Equatable {
     var liveConversion: Bool = false
     /// AIモデル（Zenzai）で変換する。モデルを読み込むので重く、メモリも使う
     var zenzai: Bool = false
+    /// Zenzai で大きいモデル（small）を使う。精度は上がるが、遅く、メモリも使う
+    var zenzaiHigh: Bool = false
     /// 変換待ち（読みに下線が出ている間）は、数字・⌫・確定・次候補のキー以外を押せなくする
     var lockWhileComposing: Bool = true
     /// 両手持ちで、かなを左右に分けて同じものを並べる（ピンチアウトで分割、ピンチインで戻す）
@@ -98,6 +100,7 @@ struct KeyboardSettings: Codable, Equatable {
         typoCorrection = (try? c.decode(Bool.self, forKey: .typoCorrection)) ?? d.typoCorrection
         liveConversion = (try? c.decode(Bool.self, forKey: .liveConversion)) ?? d.liveConversion
         zenzai = (try? c.decode(Bool.self, forKey: .zenzai)) ?? d.zenzai
+        zenzaiHigh = (try? c.decode(Bool.self, forKey: .zenzaiHigh)) ?? d.zenzaiHigh
         lockWhileComposing = (try? c.decode(Bool.self, forKey: .lockWhileComposing)) ?? d.lockWhileComposing
         splitKana = (try? c.decode(Bool.self, forKey: .splitKana)) ?? d.splitKana
         iosLayout = (try? c.decode(Bool.self, forKey: .iosLayout)) ?? d.iosLayout

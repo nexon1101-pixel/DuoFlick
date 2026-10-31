@@ -381,3 +381,9 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - ビルドの変更：project.yml のパッケージに `traits: [Zenzai]`（XcodeGen 2.46 以降が対応）、`SWIFT_OBJC_INTEROP_MODE: objcxx`（azooKey 本体と同じ。C++ 連携でビルドされるパッケージのため）。build.yml に、モデルの取得（10MB 未満なら失敗）と、生成したプロジェクトに Zenzai が入っているかの確認を足した。固定のまま v0.9 の Zenzai は、GPU（Metal）を使う。azooKey 本体は、新しい版の ZenzaiCPU（CPU のみ）を使っているが、新しい版は 235 コミット先で API が変わるため、上げていない。キーボードで GPU が使えず落ちるときは、AzooKey を上げて ZenzaiCPU にする
 - 注意：モデルを読み込むのでメモリを使う（azooKey の説明では small で約150MB。xsmall はもっと小さいはず）。キーボードの使えるメモリを超えると、キーボードが落ちる。変換が遅くなることもある。実機での確認待ち（ビルドが通るかも未確認）
 - v0.36.0 の最初のビルドは失敗：objcxx にすると PropertyListSerialization の options（ReadOptions）が Int として扱われ、`options: []` が通らなかった（SharedStore.swift・Backup.swift）。`options: 0` にした（v0.36.1）。なお、モデルの取得と、プロジェクトに Zenzai の trait が入る確認は通っていた（XcodeGen の `traits: [Zenzai]` は有効）
+
+## v0.36.2：読みの余白を半分に、AIの高精度（small）を選べる
+- v0.36.1 のビルドは成功。「AIは、あまり役に立っていない。少しの改善は感じる」「動きは全く問題ない」「ふりがなのところ、あと半分くらいスペースが少なくていい」と言われた。画面は、読み「こんにち」で、帯が コン日／今2値／今日／こん日／近日／婚E だった（試し打ち欄）
+- 読みの余白を15→8ptにした（CandidateBar.readingMargin）。読みのボタンは高さ14ptで、候補の上の空きに少し重ねる
+- 設定「AIを高精度にする」（KeyboardSettings.zenzaiHigh、初期オフ）を足した。オンにすると、大きいモデル（zenz-v3.1-small、約72MB）を使う。オフは、これまでの xsmall。ビルドで両方を Keyboard/Zenz/xsmall・small に取得して同梱する。small がなければ xsmall を使う。ipa はさらに大きくなる。small は動作が重く、メモリも多く使う。実機での確認待ち
+- 精度の弱い点（メモ）：ライブ変換のときは、読み全体の候補を予測より先に並べている（v0.35.7）。読みが言葉になっていない途中（こんにち など）では、エンジンのいちばんよい予測（こんにちは）より、変な全体の候補（コン日）が先頭に来る。AIの変換は前の文章を見るが、先頭の候補の並べ替えは、この並びを前提にしている

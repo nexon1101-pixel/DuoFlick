@@ -826,6 +826,7 @@ final class KeyboardViewController: UIInputViewController {
         composer.typoCorrection = model.settings.typoCorrection
         composer.liveConversion = model.settings.liveConversion
         composer.zenzai = model.settings.zenzai
+        composer.zenzaiHigh = model.settings.zenzaiHigh
         updateLeftContext()
         hideCandidateList()
         if composer.isEmpty {
@@ -860,6 +861,7 @@ final class KeyboardViewController: UIInputViewController {
         candidateWork?.cancel()
         guard composer.needsRefresh else { return }
         composer.zenzai = model.settings.zenzai
+        composer.zenzaiHigh = model.settings.zenzaiHigh
         updateLeftContext()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
