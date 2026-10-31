@@ -8,11 +8,16 @@ class TextListStore: ObservableObject {
     /// 固定した項目（上に出し、件数の上限で消えない）
     @Published private(set) var pinned: Set<String> = []
     private let key: String
-    private let limit: Int
+    private let limitFn: () -> Int
+    private var limit: Int { limitFn() }
 
-    init(key: String, limit: Int) {
+    convenience init(key: String, limit: Int) {
+        self.init(key: key, limitFn: { limit })
+    }
+
+    init(key: String, limitFn: @escaping () -> Int) {
         self.key = key
-        self.limit = limit
+        self.limitFn = limitFn
         items = SharedStore.defaults.stringArray(forKey: key) ?? []
         pinned = Set(SharedStore.defaults.stringArray(forKey: key + ".pinned") ?? [])
         sortPinnedFirst()
@@ -75,3 +80,13 @@ final class PhraseStore: TextListStore {
     init() { super.init(key: "DuoFlick.phrases.v1", limit: 100) }
 }
 
+
+/// クリップボード履歴の件数（設定）
+enum ClipboardLimit {
+    static let key = "DuoFlick.clipboardLimit.v1"
+    static let choices = [10, 20, 30, 50, 100, 200]
+    static var value: Int {
+        let v = SharedStore.defaults.integer(forKey: key)
+        return v > 0 ? v : 30
+    }
+}

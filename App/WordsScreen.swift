@@ -9,6 +9,7 @@ struct WordsSections: View {
     @State private var phrase = ""
     @State private var search = ""
     @State private var message = ""
+    @State private var clipLimit = ClipboardLimit.value
 
     private var shown: [UserWord] {
         let q = search.trimmingCharacters(in: .whitespaces)
@@ -47,6 +48,16 @@ struct WordsSections: View {
                 for i in idx { dictionary.remove(list[i]) }
                 SettingsSignal.post()
             }
+        }
+        Section("クリップボード履歴") {
+            Picker("残す件数", selection: $clipLimit) {
+                ForEach(ClipboardLimit.choices, id: \.self) { Text("\($0)件").tag($0) }
+            }
+            .onChange(of: clipLimit) { _, v in
+                SharedStore.defaults.set(v, forKey: ClipboardLimit.key)
+            }
+            Text("固定した項目は消えません（件数には入ります）。減らしたときは、次にコピーされたときに古いものから消えます。")
+                .font(.footnote).foregroundStyle(.secondary)
         }
         Section("定型文を足す") {
             TextField("定型文", text: $phrase, axis: .vertical)

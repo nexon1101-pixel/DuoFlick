@@ -330,3 +330,7 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - UserDictionaryStore（Shared/UserDictionaryStore.swift）と TextListStore / PhraseStore（Shared/TextListStore.swift）を Shared/ へ移した。reload() を足し、キーボードは SettingsSignal と viewWillAppear で読み直す。ClipboardStore と RegisterModel はキーボード側に残した
 - iOSユーザ辞書の取り込みは洗い替え：UserWord に source（"ios"）を付け、取り込むたびに前の "ios" の語を消して入れ直す。自分で登録した語は消さない。iOSから1語も取れなかったときは何も変えない。v0.35.1 までに取り込んだ語は印がないので、1回だけ残る（手で消す）。取り込みの操作はキーボードの設定の辞書から（requestSupplementaryLexicon はキーボードからしか呼べない）
 - 実機での確認待ち（ビルドが通るかも未確認）
+
+## v0.35.3：クリップボード履歴の件数を設定に
+- 今まで30件で固定だった。設定画面「辞書・定型文」タブの「クリップボード履歴」で、10・20・30・50・100・200件から選ぶ（初期30、SharedStore.defaults の DuoFlick.clipboardLimit.v1、ClipboardLimit）。固定した項目は消えない（件数には入る）。減らしたときは、次にコピーされたときに古いものから消える
+- 実機での確認待ち（ビルドが通るかも未確認）

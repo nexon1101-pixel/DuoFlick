@@ -5,7 +5,7 @@ import UIKit
 final class ClipboardStore: TextListStore {
     private var lastChangeCount = UIPasteboard.general.changeCount
 
-    init() { super.init(key: "DuoFlick.clipboard.v1", limit: 30) }
+    init() { super.init(key: "DuoFlick.clipboard.v1", limitFn: { ClipboardLimit.value }) }
 
     /// コピーされた内容が変わっていれば履歴に足す（フルアクセスが必要）
     func capture() {
