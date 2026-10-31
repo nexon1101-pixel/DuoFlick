@@ -53,6 +53,28 @@ jobs:
           restore-keys: |
             deriv27-
 
+      # AIモデル（Zenzai）を、GPU（Metal）でなく CPU だけで動かすよう、取得したパッケージを書き換える。
+      # キーボード拡張では GPU が使えず、推論が失敗して、AIが何もしなかったため（azooKey 本体も、キーボードでは CPU だけ）
+      - name: Patch package (Zenzai on CPU only)
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project DuoFlick.xcodeproj -scheme DuoFlick -derivedDataPath build
+          F=$(find build/SourcePackages/checkouts/AzooKeyKanaKanjiConverter -name ZenzContext.swift | head -1)
+          echo "patch target: $F"
+          python3 - "$F" <<'PY'
+          import sys
+          p = sys.argv[1]
+          s = open(p, encoding="utf-8").read()
+          if "n_gpu_layers = 0" not in s:
+              a = "model_params.use_mmap = true"
+              b = "ctx_params.n_batch = 512"
+              assert a in s and b in s, "patch anchors not found"
+              s = s.replace(a, a + "\n        model_params.n_gpu_layers = 0", 1)
+              s = s.replace(b, b + "\n        ctx_params.offload_kqv = false", 1)
+              open(p, "w", encoding="utf-8").write(s)
+          PY
+          grep -n "n_gpu_layers\|offload_kqv" "$F" || { echo "::error::パッチが入っていません"; exit 1; }
+
       - name: Build (unsigned)
         run: |
           xcodebuild -version
@@ -66,6 +88,7 @@ jobs:
             -derivedDataPath build \
             -skipPackagePluginValidation \
             -skipMacroValidation \
+            -disableAutomaticPackageResolution \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
