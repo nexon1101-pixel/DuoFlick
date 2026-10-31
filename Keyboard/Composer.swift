@@ -870,7 +870,16 @@ final class Composer {
         }
         guard !front.isEmpty else { return list }
         let used = Set(front.map(\.text))
-        return front + list.filter { !(used.contains($0.text) && readingKey($0) == key) }
+        let rest = list.filter { !(used.contains($0.text) && readingKey($0) == key) }
+        if zenzai, !leftContext.isEmpty, front.first?.text != top.text {
+            // AIが前の文章を見て選んだ先頭は残し、前に選んだ語はそのすぐ後ろに出す
+            // （前に選んだ語を先頭にすると、文脈に合わない語がいつも先頭に来てしまう）
+            let topKept = front.filter { $0.text == top.text && readingKey($0) == key }
+            let others = front.filter { !($0.text == top.text && readingKey($0) == key) }
+            let head = topKept.isEmpty ? [top] : topKept
+            return head + others + rest.filter { !($0.text == top.text && readingKey($0) == key) }
+        }
+        return front + rest
     }
 
     /// 変換候補が今の読みに追いついていないか
