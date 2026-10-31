@@ -77,7 +77,7 @@ class TextListStore: ObservableObject {
 }
 
 final class PhraseStore: TextListStore {
-    init() { super.init(key: "DuoFlick.phrases.v1", limit: 100) }
+    init() { super.init(key: "DuoFlick.phrases.v1", limitFn: { 100 }) }
 }
 
 
