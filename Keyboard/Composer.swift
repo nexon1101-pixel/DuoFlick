@@ -171,10 +171,8 @@ final class Composer {
             rest = rest.dropFirst(c.data.count)
         }
         guard pos == chars.count else { return }
-        // 読みが1文字で、漢字1文字になるだけのときは、ライブ変換しない（ひらがなのまま見せる）
-        let joined = out.map(\.text).joined()
-        if chars.count == 1, joined.count == 1, joined != reading,
-           joined.unicodeScalars.contains(where: { $0.value >= 0x4E00 && $0.value <= 0x9FFF }) { return }
+        // 読みが1文字のときは、ライブ変換しない（ひらがなのまま見せる。「を」→「ヺ」のような変な形も防ぐ）
+        if chars.count == 1 { return }
         liveClauses = out
         liveReading = reading
         liveBestIndex = bi
