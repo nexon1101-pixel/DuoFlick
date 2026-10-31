@@ -741,15 +741,18 @@ final class Composer {
         zt.insertAtCursorPosition("かいとう", inputStyle: .direct)
         let ctx = leftContext.isEmpty ? "冷凍食品の" : leftContext
         if let url = Self.zenzURL(high: zenzaiHigh) {
-            var zo = options
-            zo.zenzaiMode = .on(weight: url, inferenceLimit: 1, personalizationMode: nil,
-                                versionDependentMode: .v3(.init(leftSideContext: ctx)))
-            let t0 = Date()
-            let on = converter.requestCandidates(zt, options: zo).mainResults.prefix(5).map(\.text)
-            let sec = Date().timeIntervalSince(t0)
-            converter.stopComposition()
-            lines.append("「\(ctx)」＋かいとう（AIあり、\(String(format: "%.2f", sec))秒）：\(on.joined(separator: " / "))")
-            lines.append("状態：\(converter.zenzStatus)")
+            // 点検の回数（inferenceLimit）と、候補を多く出す設定（rich）を変えて、同じ読みを変換する
+            for (limit, rich) in [(1, false), (3, false), (10, false), (10, true)] {
+                var zo = options
+                zo.zenzaiMode = .on(weight: url, inferenceLimit: limit, requestRichCandidates: rich, personalizationMode: nil,
+                                    versionDependentMode: .v3(.init(leftSideContext: ctx)))
+                let t0 = Date()
+                let on = converter.requestCandidates(zt, options: zo).mainResults.prefix(5).map(\.text)
+                let sec = Date().timeIntervalSince(t0)
+                converter.stopComposition()
+                lines.append("AIあり 回数\(limit)\(rich ? " rich" : "")（\(String(format: "%.2f", sec))秒）：\(on.joined(separator: " / "))")
+            }
+            lines.append("文脈：「\(ctx)」　状態：\(converter.zenzStatus)")
         } else {
             lines.append("モデルのファイルが見つからないため、AIは使われていません")
         }
