@@ -935,8 +935,12 @@ final class Composer {
             let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
             let exact = found.filter { $0.rubyCount == n && !$0.data.isEmpty }
             // 伸ばす棒（ー）を波線（〜 ～ ~）にしただけの候補（うーん→ウ~ン）も、読みそのままとみなす
+            // 濁点・半濁点をつけただけの形（ヺ、を゛ など）も、読みそのままとみなす
             func norm(_ t: String) -> String {
-                String(t.map { "〜～~∼".contains($0) ? "ー" : $0 })
+                var v = String.UnicodeScalarView()
+                for u in t.decomposedStringWithCanonicalMapping.unicodeScalars
+                where ![0x3099, 0x309A, 0x309B, 0x309C].contains(u.value) { v.append(u) }
+                return String(String(v).map { "〜～~∼".contains($0) ? "ー" : $0 })
             }
             let nk = norm(kata), nr = norm(reading)
             func isPlain(_ c: Candidate) -> Bool { let t = norm(c.text); return t == nk || t == nr }
