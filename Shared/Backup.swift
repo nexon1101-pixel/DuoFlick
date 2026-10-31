@@ -36,7 +36,7 @@ enum Backup {
         var count = 0
         for (key, base64) in values where isTarget(key) {
             guard let raw = Data(base64Encoded: base64),
-                  let value = try? PropertyListSerialization.propertyList(from: raw, options: [], format: nil) else { continue }
+                  let value = try? PropertyListSerialization.propertyList(from: raw, options: 0, format: nil) else { continue }
             SharedStore.defaults.set(value, forKey: key)
             count += 1
         }
