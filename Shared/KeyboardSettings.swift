@@ -53,6 +53,8 @@ struct KeyboardSettings: Codable, Equatable {
     var toggleTap: Bool = false
     /// 打ち間違いを直した候補も出す（変換エンジンの機能）。初期はオフ
     var typoCorrection: Bool = false
+    /// ライブ変換：入力中の下線の文字を、ひらがなではなく変換した形で出す。初期はオフ
+    var liveConversion: Bool = false
     /// 変換待ち（読みに下線が出ている間）は、数字・⌫・確定・次候補のキー以外を押せなくする
     var lockWhileComposing: Bool = true
     /// 両手持ちで、かなを左右に分けて同じものを並べる（ピンチアウトで分割、ピンチインで戻す）
@@ -92,6 +94,7 @@ struct KeyboardSettings: Codable, Equatable {
         autoCorrect = (try? c.decode(Bool.self, forKey: .autoCorrect)) ?? d.autoCorrect
         toggleTap = (try? c.decode(Bool.self, forKey: .toggleTap)) ?? d.toggleTap
         typoCorrection = (try? c.decode(Bool.self, forKey: .typoCorrection)) ?? d.typoCorrection
+        liveConversion = (try? c.decode(Bool.self, forKey: .liveConversion)) ?? d.liveConversion
         lockWhileComposing = (try? c.decode(Bool.self, forKey: .lockWhileComposing)) ?? d.lockWhileComposing
         splitKana = (try? c.decode(Bool.self, forKey: .splitKana)) ?? d.splitKana
         iosLayout = (try? c.decode(Bool.self, forKey: .iosLayout)) ?? d.iosLayout

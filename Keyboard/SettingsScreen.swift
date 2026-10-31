@@ -126,6 +126,7 @@ struct SettingsScreen: View {
                 Toggle("押したときの振動", isOn: $model.settings.haptics)
                 Toggle("続けてタップで文字を切り替え", isOn: $model.settings.toggleTap)
                 Toggle("ずれ補正（押す位置と斜めのくせ）", isOn: $model.settings.autoCorrect)
+                Toggle("ライブ変換", isOn: $model.settings.liveConversion)
                 Toggle("打ち間違いの候補（試験的）", isOn: $model.settings.typoCorrection)
                 Toggle("内側画面の片手持ちをiOS標準の配置にする", isOn: $model.settings.iosLayout)
                 Toggle("両手持ちで、かなを左右に分ける（ピンチでも切り替え）", isOn: $model.settings.splitKana)

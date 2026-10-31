@@ -750,8 +750,11 @@ final class KeyboardViewController: UIInputViewController {
     /// 入力欄に下線付きの文字があるか
     private var markedActive = false
 
-    private func showMarked(_ text: String) {
-        textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
+    /// いま入力欄に出している下線付きの文字（ライブ変換で、変わったときだけ入れ替えるため）
+    private var shownMarked = ""
+    private func showMarked(_ text: String, highlight: NSRange? = nil) {
+        shownMarked = text
+        textDocumentProxy.setMarkedText(text, selectedRange: highlight ?? NSRange(location: (text as NSString).length, length: 0))
         markedActive = true
         // この入力欄が、下線付きの文字を文脈として返すか確かめておく（空になったかどうかの判断に使う）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -797,11 +800,12 @@ final class KeyboardViewController: UIInputViewController {
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
     private func updateComposition() {
         composer.typoCorrection = model.settings.typoCorrection
+        composer.liveConversion = model.settings.liveConversion
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()
         } else {
-            showMarked(composer.markedText)
+            showMarked(composer.markedText, highlight: composer.markedHighlight)
         }
         refreshBar()
         scheduleCandidates()
@@ -825,6 +829,11 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return }
             self.composer.refreshIfNeeded()
             self.refreshBar()
+            // ライブ変換：変換が済んだら、入力欄の下線の文字を変換した形に入れ替える
+            if self.model.settings.liveConversion, !self.composer.isEmpty, self.markedActive {
+                let t = self.composer.markedText
+                if t != self.shownMarked { self.showMarked(t, highlight: self.composer.markedHighlight) }
+            }
         }
         candidateWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
@@ -1107,6 +1116,11 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func commitCandidate(_ index: Int) {
+        // ライブ変換で文節を選び直している途中は、確定せず、その文節を入れ替える
+        if composer.chooseClauseAlt(index) {
+            updateComposition()
+            return
+        }
         let reading = composer.reading
         guard let text = composer.commit(candidateAt: index) else { return }
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
