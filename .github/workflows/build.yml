@@ -57,9 +57,16 @@ jobs:
       # キーボード拡張では GPU が使えず、推論が失敗して、AIが何もしなかったため（azooKey 本体も、キーボードでは CPU だけ）
       - name: Patch package (Zenzai on CPU only)
         run: |
+          set +e
           xcodebuild -resolvePackageDependencies \
-            -project DuoFlick.xcodeproj -scheme DuoFlick -derivedDataPath build
-          F=$(find build/SourcePackages/checkouts/AzooKeyKanaKanjiConverter -name ZenzContext.swift | head -1)
+            -project DuoFlick.xcodeproj -scheme DuoFlick -derivedDataPath build > resolve.log 2>&1
+          echo "resolve exit: $?"
+          grep -E "error|warning: " resolve.log | head -5 | while IFS= read -r l; do echo "::warning::resolve: ${l:0:300}"; done
+          F=$(find build -name ZenzContext.swift 2>/dev/null | head -1)
+          if [ -z "$F" ]; then
+            echo "::error::ZenzContext.swift が見つかりません。build の中身: $(ls build | tr '\n' ' ') / SourcePackages: $(ls build/SourcePackages 2>&1 | tr '\n' ' ') / checkouts: $(ls build/SourcePackages/checkouts 2>&1 | tr '\n' ' ')"
+            exit 1
+          fi
           echo "patch target: $F"
           python3 - "$F" <<'PY'
           import sys
@@ -68,11 +75,14 @@ jobs:
           if "n_gpu_layers = 0" not in s:
               a = "model_params.use_mmap = true"
               b = "ctx_params.n_batch = 512"
-              assert a in s and b in s, "patch anchors not found"
+              if a not in s or b not in s:
+                  print("::error::パッチの目印が見つかりません")
+                  sys.exit(1)
               s = s.replace(a, a + "\n        model_params.n_gpu_layers = 0", 1)
               s = s.replace(b, b + "\n        ctx_params.offload_kqv = false", 1)
               open(p, "w", encoding="utf-8").write(s)
           PY
+          [ $? -eq 0 ] || exit 1
           grep -n "n_gpu_layers\|offload_kqv" "$F" || { echo "::error::パッチが入っていません"; exit 1; }
 
       - name: Build (unsigned)
