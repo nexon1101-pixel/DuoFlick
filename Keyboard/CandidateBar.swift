@@ -5,6 +5,8 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     static let height: CGFloat = 44
 
     var onSelect: ((Int) -> Void)?
+    /// 左上の読み（ひらがな）を押したとき
+    var onReading: (() -> Void)?
     /// 右端の∨／∧ボタン（候補の一覧を開く・閉じる）
     var onExpand: (() -> Void)?
     /// 帯を下にフリックしたとき（キーボードを閉じる）
@@ -13,6 +15,8 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     private let scroll = UIScrollView()
     private let expandButton = UIButton(type: .system)
     private let stack = UIStackView()
+    /// ライブ変換で、打った読みを帯の左上に小さく出す（高さは増やさない。押すとひらがなで確定）
+    private let readingButton = UIButton(type: .system)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -64,6 +68,31 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
             stack.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
         ])
+        setupReadingButton()
+    }
+
+    private func setupReadingButton() {
+        var config = UIButton.Configuration.plain()
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 8)
+        readingButton.configuration = config
+        readingButton.translatesAutoresizingMaskIntoConstraints = false
+        readingButton.isHidden = true
+        readingButton.addAction(UIAction { [weak self] _ in self?.onReading?() }, for: .touchUpInside)
+        addSubview(readingButton)
+        NSLayoutConstraint.activate([
+            readingButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            readingButton.topAnchor.constraint(equalTo: topAnchor, constant: 0),
+            readingButton.heightAnchor.constraint(equalToConstant: 16),
+        ])
+    }
+
+    private func updateReadingButton(_ reading: String?, hasItems: Bool) {
+        guard let reading, !reading.isEmpty, hasItems else { readingButton.isHidden = true; return }
+        var title = AttributedString(reading)
+        title.font = UIFont.systemFont(ofSize: 11)
+        readingButton.configuration?.attributedTitle = title
+        readingButton.configuration?.baseForegroundColor = Palette.text.withAlphaComponent(0.6)
+        readingButton.isHidden = false
     }
 
     required init?(coder: NSCoder) {
@@ -92,6 +121,7 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         // 同じ内容なら作り直さない（ちらつきと無駄な処理を防ぐ）
         if list == shownItems && selected == shownSelected && dimmed == shownDimmed && reading == shownReading { return }
         shownReading = reading
+        updateReadingButton(reading, hasItems: !list.isEmpty)
         shownDimmed = dimmed
         // 案内（コピー内容の貼り付けなど）は、帯の真ん中に出す
         centerWidth.isActive = dimmed

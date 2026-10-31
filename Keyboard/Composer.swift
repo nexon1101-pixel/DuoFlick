@@ -120,11 +120,8 @@ final class Composer {
         guard liveConversion, !isSegmented else { return }
         let reading = composing.convertTarget
         let chars = Array(reading)
-        guard !chars.isEmpty else { return }
-        // 読み全体を覆う先頭の候補。読みをカタカナにしただけの候補は、ほかにあれば後回しにする
-        let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
-        let full = candidates.indices.filter { candidates[$0].rubyCount == chars.count && !candidates[$0].data.isEmpty }
-        guard let bi = full.first(where: { candidates[$0].text != kata && candidates[$0].text != reading }) ?? full.first else { return }
+        guard !chars.isEmpty,
+              let bi = candidates.firstIndex(where: { $0.rubyCount == chars.count && !$0.data.isEmpty }) else { return }
         var rest = candidates[bi].data[...]
         var pos = 0
         var out: [LiveClause] = []
@@ -798,7 +795,20 @@ final class Composer {
         let target = isSegmented ? composing.prefixToCursorPosition() : composing
         var requestOptions = options
         requestOptions.needTypoCorrection = typoCorrection
-        candidates = prioritizeChosen(converter.requestCandidates(target, options: requestOptions).mainResults)
+        var found = converter.requestCandidates(target, options: requestOptions).mainResults
+        if liveConversion, !isSegmented {
+            // ライブ変換：読み全体の候補を、読みの続きを補った予測より先に並べる（帯の先頭を、下線の文字と同じにする）。
+            // 読みをそのままカタカナ・ひらがなにしただけの候補は、ほかの候補のあとに回す
+            let reading = composing.convertTarget
+            let n = reading.count
+            let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
+            let exact = found.filter { $0.rubyCount == n && !$0.data.isEmpty }
+            let plain = exact.filter { $0.text == kata || $0.text == reading }
+            let others = exact.filter { $0.text != kata && $0.text != reading }
+            let rest = found.filter { !($0.rubyCount == n && !$0.data.isEmpty) }
+            found = others + plain + rest
+        }
+        candidates = prioritizeChosen(found)
         buildLive()
         extras = []
         guard !isSegmented else { return }
