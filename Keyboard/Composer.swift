@@ -120,8 +120,11 @@ final class Composer {
         guard liveConversion, !isSegmented else { return }
         let reading = composing.convertTarget
         let chars = Array(reading)
-        guard !chars.isEmpty,
-              let bi = candidates.firstIndex(where: { $0.rubyCount == chars.count && !$0.data.isEmpty }) else { return }
+        guard !chars.isEmpty else { return }
+        // 読み全体を覆う先頭の候補。読みをカタカナにしただけの候補は、ほかにあれば後回しにする
+        let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
+        let full = candidates.indices.filter { candidates[$0].rubyCount == chars.count && !candidates[$0].data.isEmpty }
+        guard let bi = full.first(where: { candidates[$0].text != kata && candidates[$0].text != reading }) ?? full.first else { return }
         var rest = candidates[bi].data[...]
         var pos = 0
         var out: [LiveClause] = []
@@ -531,7 +534,8 @@ final class Composer {
         }
         // ライブ変換では、先頭の候補がもう出ているので、最初の空白で次の候補へ進む
         if liveConversion, selectedIndex == nil, !liveClauses.isEmpty, displayCount > 1 {
-            selectedIndex = (displayIndex(forCandidate: liveBestIndex) + 1) % displayCount
+            // 最初に出ているライブ変換の形が1つ目、空白で2つ目（帯の左から2番目）になる
+            selectedIndex = 1
             return
         }
         if let i = selectedIndex {

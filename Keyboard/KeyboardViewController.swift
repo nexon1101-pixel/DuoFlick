@@ -1458,9 +1458,8 @@ final class KeyboardViewController: UIInputViewController {
         readingStrip.translatesAutoresizingMaskIntoConstraints = false
         readingStrip.isHidden = true
         view.addSubview(readingStrip)
-        var config = UIButton.Configuration.gray()
-        config.cornerStyle = .capsule
-        config.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10)
+        var config = UIButton.Configuration.plain()
+        config.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 8)
         readingChip.configuration = config
         readingChip.translatesAutoresizingMaskIntoConstraints = false
         readingChip.isHidden = true
