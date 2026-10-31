@@ -109,7 +109,7 @@ final class Composer {
         if zenzai, let url = Self.zenzURL(high: zenzaiHigh) {
             o.zenzaiMode = .on(
                 weight: url,
-                inferenceLimit: 1,
+                inferenceLimit: 10,
                 personalizationMode: nil,
                 versionDependentMode: .v3(.init(leftSideContext: leftContext.isEmpty ? nil : leftContext))
             )
