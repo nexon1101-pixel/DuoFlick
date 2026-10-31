@@ -12,16 +12,26 @@ struct MiddlePanel: View {
     @ObservedObject var model: PanelModel
     let onSelect: (Int) -> Void
     var onSwipeDown: (() -> Void)? = nil
+    var onReading: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             if !model.reading.isEmpty, !model.items.isEmpty {
-                Text(model.reading)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color(uiColor: Palette.text).opacity(0.55))
-                    .lineLimit(1)
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, minHeight: 18, alignment: .leading)
+                HStack {
+                    Button { onReading?() } label: {
+                        Text(model.reading)
+                            .font(.system(size: 13))
+                            .lineLimit(1)
+                            .foregroundStyle(Color(uiColor: Palette.text).opacity(0.7))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.gray.opacity(0.3)))
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 4)
             }
             list
         }

@@ -151,6 +151,19 @@ final class Composer {
         return composing.convertTarget
     }
 
+    /// 読みのひらがなのまま確定する（帯の左端の読みを押したとき）。文節を選び直している間は、その文節だけひらがなにする。
+    /// 文節の場合は nil（確定はしない）
+    func commitReadingAsIs() -> String? {
+        guard liveConversion, !composing.isEmpty else { return nil }
+        if focusClause != nil {
+            if let i = clauseAlts.firstIndex(where: { $0.text == readingLabel }) { _ = chooseClauseAlt(i) }
+            return nil
+        }
+        let text = composing.convertTarget
+        reset()
+        return text
+    }
+
     /// 選び直している文節を、入力欄の下線の文字の中で選択して見せる範囲
     var markedHighlight: NSRange? {
         guard let k = focusClause, liveUsable, k < liveClauses.count else { return nil }
@@ -815,15 +828,6 @@ final class Composer {
             if let half = kata.applyingTransform(.fullwidthToHalfwidth, reverse: false), half != kata, !have.contains(half) {
                 extraAt = 10_000
                 extras = [half]
-            }
-        }
-        // ライブ変換：ひらがなのまま入れたいとき用に、読みそのものを候補の最後に足す
-        if liveConversion, !have.contains(reading), !extras.contains(reading) {
-            if extras.isEmpty {
-                extraAt = 10_000
-                extras = [reading]
-            } else if extraAt >= 10_000 {
-                extras.insert(reading, at: 0)
             }
         }
     }

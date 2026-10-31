@@ -90,6 +90,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.onCursor = { [weak self] steps in self?.cursorDrag(steps) }
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
+        candidateBar.onReading = { [weak self] in self?.commitReadingAsIs() }
         candidateBar.onExpand = { [weak self] in self?.toggleCandidateList() }
         candidateBar.onSwipeDown = { [weak self] in
             // 帯を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
@@ -1043,7 +1044,7 @@ final class KeyboardViewController: UIInputViewController {
                 // 真ん中を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
                 self?.commitAll()
                 self?.dismissKeyboard()
-            }))
+            }, onReading: { [weak self] in self?.commitReadingAsIs() }))
             host.view.backgroundColor = .clear
             addChild(host)
             view.addSubview(host.view)
@@ -1138,6 +1139,20 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             updateComposition()
         }
+    }
+
+    /// 帯の左端の読みを押したとき：ひらがなのまま確定する（文節を選び直している間は、その文節をひらがなにする）
+    private func commitReadingAsIs() {
+        let reading = composer.reading
+        guard let text = composer.commitReadingAsIs() else {
+            updateComposition()
+            return
+        }
+        keyboardView.resetFlickHistory()
+        insertCommitted(text)
+        lastCommit = (text, reading)
+        refreshBar()
+        schedulePredictions()
     }
 
     private func commitAll() {
