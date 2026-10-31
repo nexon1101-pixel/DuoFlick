@@ -825,6 +825,8 @@ final class KeyboardViewController: UIInputViewController {
     private func updateComposition() {
         composer.typoCorrection = model.settings.typoCorrection
         composer.liveConversion = model.settings.liveConversion
+        composer.zenzai = model.settings.zenzai
+        updateLeftContext()
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()
@@ -846,9 +848,19 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 打鍵が続いている間は変換を待ち、指が止まったらまとめて変換する
     private var candidateWork: DispatchWorkItem?
+    /// Zenzai に渡す、カーソルより前の文章（入力中の下線の文字は除く）
+    private func updateLeftContext() {
+        guard model.settings.zenzai else { composer.leftContext = ""; return }
+        var before = textDocumentProxy.documentContextBeforeInput ?? ""
+        if markedActive, !shownMarked.isEmpty, before.hasSuffix(shownMarked) { before.removeLast(shownMarked.count) }
+        composer.leftContext = String(before.suffix(20))
+    }
+
     private func scheduleCandidates() {
         candidateWork?.cancel()
         guard composer.needsRefresh else { return }
+        composer.zenzai = model.settings.zenzai
+        updateLeftContext()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.composer.refreshIfNeeded()

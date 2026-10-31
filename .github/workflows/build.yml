@@ -27,8 +27,20 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      # Zenzai（AIモデル）のモデルを取り込む。ファイルはリポジトリに置かず、ビルドのたびに取得する
+      - name: Download Zenzai model
+        run: |
+          mkdir -p Keyboard/Zenz
+          curl -L --fail --retry 3 -o Keyboard/Zenz/ggml-model-Q5_K_M.gguf \
+            https://huggingface.co/Miwa-Keita/zenz-v3.1-xsmall-gguf/resolve/main/ggml-model-Q5_K_M.gguf
+          ls -l Keyboard/Zenz
+          test "$(stat -f%z Keyboard/Zenz/ggml-model-Q5_K_M.gguf)" -gt 10000000
+
       - name: Generate Xcode project
-        run: xcodegen generate
+        run: |
+          xcodegen generate
+          # パッケージの trait（Zenzai）が、生成したプロジェクトに入っているか確かめる
+          grep -c "Zenzai" DuoFlick.xcodeproj/project.pbxproj || { echo "::error::Zenzai の trait がプロジェクトに入っていません"; exit 1; }
 
       # 前回のビルド結果（パッケージの取得と、変えていない部分のコンパイル）を使い回して、ビルド時間を短くする
       - name: Restore build cache

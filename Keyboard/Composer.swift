@@ -86,6 +86,27 @@ final class Composer {
 
     /// ライブ変換：入力中の文字を、ひらがなではなく変換した形で出す。中身（読み）は今までどおりひらがなで持つ
     var liveConversion = false
+    /// AIモデル（Zenzai）で変換するか。モデルのファイルがあるときだけ働く
+    var zenzai = false
+    /// カーソルより前の文章（Zenzai に文脈として渡す）
+    var leftContext = ""
+    private static let zenzURL: URL? = {
+        let u = Bundle.main.bundleURL.appendingPathComponent("Zenz/ggml-model-Q5_K_M.gguf", isDirectory: false)
+        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+    }()
+    /// いまの設定を反映した、変換のときの設定
+    private func requestOptionsForConvert() -> ConvertRequestOptions {
+        var o = options
+        if zenzai, let url = Self.zenzURL {
+            o.zenzaiMode = .on(
+                weight: url,
+                inferenceLimit: 1,
+                personalizationMode: nil,
+                versionDependentMode: .v3(.init(leftSideContext: leftContext.isEmpty ? nil : leftContext))
+            )
+        }
+        return o
+    }
 
     /// 変換した文を文節に分けたもの
     struct LiveClause {
@@ -836,7 +857,7 @@ final class Composer {
             return
         }
         let target = isSegmented ? composing.prefixToCursorPosition() : composing
-        var requestOptions = options
+        var requestOptions = requestOptionsForConvert()
         requestOptions.needTypoCorrection = typoCorrection
         var found = converter.requestCandidates(target, options: requestOptions).mainResults
         if liveConversion, !isSegmented {

@@ -373,3 +373,10 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - v0.35.8 のビルドは成功。「読み1にして」と言われた。結果が漢字1文字になるだけで止めると、てん→点 のような2文字の読みも止まってしまうため、読みが1文字のときだけにした（Composer.buildLive）
 - 打ち間違いの候補（typoCorrection）は、設定（キーボードの設定とアプリの設定画面「入力」→変換）にあり、初期はオフ。AzooKey の needTypoCorrection を使う。ライブ変換とは別に働く
 - 実機での確認待ち
+
+## v0.36.0：AIモデル（Zenzai）で変換する（試験的）
+- v0.35.9 のビルドは成功。「変換精度がひどい。何とかしてくれ」と言われ、選択式で「AIモデル（Zenzai）を入れる」を選んだ。「見てくれ」は「直してくれ」の意味
+- 設定「AIで変換（試験的）」（KeyboardSettings.zenzai、初期オフ。アプリの設定画面「入力」→変換、キーボードの設定画面）。オンにすると、変換のとき、入力欄のカーソルより前の文章（20文字まで、下線の文字は除く）を文脈としてモデルに渡す（Composer.requestOptionsForConvert、KeyboardViewController.updateLeftContext）。inferenceLimit は1（azooKey の中くらいの設定と同じ）
+- モデルは zenz-v3.1-xsmall（Hugging Face の Miwa-Keita/zenz-v3.1-xsmall-gguf、ggml-model-Q5_K_M.gguf）。リポジトリには置かず（.gitignore の *.gguf）、ビルドのたびに build.yml が Keyboard/Zenz/ へ取得し、project.yml の folder 参照でキーボード拡張に同梱する。モデルのファイルがなければ、設定をオンにしても今までの変換のまま。azooKey 本体も、キーボードで同じ xsmall と small（v3.2）を使っている（InputManager.swift）。固定している AzooKey（v0.9）は v3 の設定を持つので、v3.1 を使った（v3.2 は新しい版向け）
+- ビルドの変更：project.yml のパッケージに `traits: [Zenzai]`（XcodeGen 2.46 以降が対応）、`SWIFT_OBJC_INTEROP_MODE: objcxx`（azooKey 本体と同じ。C++ 連携でビルドされるパッケージのため）。build.yml に、モデルの取得（10MB 未満なら失敗）と、生成したプロジェクトに Zenzai が入っているかの確認を足した。固定のまま v0.9 の Zenzai は、GPU（Metal）を使う。azooKey 本体は、新しい版の ZenzaiCPU（CPU のみ）を使っているが、新しい版は 235 コミット先で API が変わるため、上げていない。キーボードで GPU が使えず落ちるときは、AzooKey を上げて ZenzaiCPU にする
+- 注意：モデルを読み込むのでメモリを使う（azooKey の説明では small で約150MB。xsmall はもっと小さいはず）。キーボードの使えるメモリを超えると、キーボードが落ちる。変換が遅くなることもある。実機での確認待ち（ビルドが通るかも未確認）

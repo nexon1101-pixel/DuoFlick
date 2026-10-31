@@ -538,6 +538,7 @@ struct DesignScreen: View {
                 toggleRow("両手持ちで、かなを左右に分ける", "ピンチアウト／ピンチインでも切り替えられます", bind(\.splitKana))
             }
             Section("変換") {
+                toggleRow("AIで変換（試験的）", "AIモデル（Zenzai）で、前の文章も見て変換します。精度は上がりますが、遅くなったり、キーボードが落ちたりすることがあります", bind(\.zenzai))
                 toggleRow("ライブ変換", "打ちながら、入力中の文字を変換した形で出します。→キーか空白の長押しで、直したい文節に移れます", bind(\.liveConversion))
                 toggleRow("打ち間違いの候補（試験的）", "打ち間違いを直した候補も出します", bind(\.typoCorrection))
             }
