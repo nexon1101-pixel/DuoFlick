@@ -775,6 +775,24 @@ final class Composer {
         let off = converter.requestCandidates(zt, options: options).mainResults.prefix(5).map(\.text)
         converter.stopComposition()
         lines.append("かいとう（AIなし）：\(off.joined(separator: " / "))")
+
+        // 途中の読みの判定用：候補ごとの点数（value）と長さ。「全」＝読み全体を覆う候補、「予」＝読みの続きを補った予測
+        lines.append("――候補の点数（AIあり／文脈なし）――")
+        for r in ["こんにち", "こんにちは", "かいとう", "とうきょ", "とうきょう", "わたしの", "ありがと", "ありがとう"] {
+            var ct = ComposingText()
+            ct.insertAtCursorPosition(r, inputStyle: .direct)
+            var o = options
+            if let url = Self.zenzURL(high: zenzaiHigh) {
+                o.zenzaiMode = .on(weight: url, inferenceLimit: 10, requestRichCandidates: false, personalizationMode: nil,
+                                   versionDependentMode: .v3(.init(leftSideContext: "")))
+            }
+            let list = converter.requestCandidates(ct, options: o).mainResults.prefix(7)
+            converter.stopComposition()
+            let s = list.map { c in
+                "\(c.rubyCount == r.count ? "全" : (c.rubyCount > r.count ? "予" : "短"))\(c.text)(\(String(format: "%.1f", c.value)))"
+            }
+            lines.append("\(r)：\(s.joined(separator: " "))")
+        }
         return lines.joined(separator: "\n")
     }
 
