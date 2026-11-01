@@ -316,6 +316,84 @@ final class Composer {
 
     /// 打った英字そのまま。ローマ字だけで打ち、読みを区切っていないときだけ出す
     private var rawRoman = ""
+    /// 読みの1文字ごとの、打ち間違いかもしれない代わりの文字（タッチの位置と方向から。読みの長さと合うときだけ使う）
+    private var altStack: [[String]] = []
+
+    // MARK: - 打ち間違いの候補（「これかな？」）
+
+    /// 濁点・半濁点・小書きの付け外しで変わる文字
+    private static let kanaVariants: [Character: [Character]] = {
+        var m: [Character: [Character]] = [:]
+        func pair(_ a: String, _ b: String) {
+            for (x, y) in zip(a, b) { m[x, default: []].append(y); m[y, default: []].append(x) }
+        }
+        pair("かきくけこさしすせそたちつてとはひふへほ", "がぎぐげござじずぜぞだぢづでどばびぶべぼ")
+        pair("はひふへほ", "ぱぴぷぺぽ")
+        pair("つやゆよあいうえおわ", "っゃゅょぁぃぅぇぉゎ")
+        return m
+    }()
+
+    /// 点数の差（代わりの読み − 元の読み）がこれ以上なら、候補に出す。タッチの記録が裏づけるときは低くする（実機の値を見て調整する）
+    static let typoMarginTouch: Float = 4
+    static let typoMarginKana: Float = 8
+    /// 元の読みに、ふつうの全体候補がないときの点数
+    static let typoBaseless: Float = -35
+
+    struct TypoHit {
+        let candidate: Candidate
+        let reading: String
+        let diff: Float
+        let touch: Bool
+        let base: Float
+    }
+
+    /// 読み全体を覆う候補のうち、読みそのまま（ひらがな・カタカナ）でない最初のもの（AIなし、辞書だけで速く引く）
+    private func bestExact(_ reading: String) -> Candidate? {
+        var ct = ComposingText()
+        ct.insertAtCursorPosition(reading, inputStyle: .direct)
+        var o = options
+        o.needTypoCorrection = false
+        let list = converter.requestCandidates(ct, options: o).mainResults
+        let n = reading.count
+        let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
+        return list.first { $0.rubyCount == n && !$0.data.isEmpty && $0.text != reading && $0.text != kata }
+    }
+
+    /// 1文字だけ打ち間違えたとして、代わりの読みを変換し、元の読みより点数が上がるものを返す（all が true なら、しきい値に関係なく全部）
+    func typoScan(_ reading: String, touch: [[String]], all: Bool = false) -> [TypoHit] {
+        let chars = Array(reading)
+        let n = chars.count
+        guard converterReady, n >= 2, n <= 14, Self.isHiragana(reading) else { return [] }
+        var variants: [(reading: String, touch: Bool)] = []
+        var seen = Set([reading])
+        func add(_ i: Int, _ c: Character, _ byTouch: Bool) {
+            guard Self.isHiragana(String(c)) else { return }
+            var v = chars
+            v[i] = c
+            let r = String(v)
+            if seen.insert(r).inserted { variants.append((r, byTouch)) }
+        }
+        if touch.count == n {
+            for i in max(0, n - 6)..<n {
+                for a in touch[i] { if a.count == 1, let c = a.first { add(i, c, true) } }
+            }
+        }
+        for i in max(0, n - 2)..<n {
+            for c in Self.kanaVariants[chars[i]] ?? [] { add(i, c, false) }
+        }
+        guard !variants.isEmpty else { return [] }
+        let base = bestExact(reading).map { Float($0.value) } ?? Self.typoBaseless
+        var hits: [TypoHit] = []
+        for v in variants.prefix(8) {
+            guard let c = bestExact(v.reading) else { continue }
+            let d = Float(c.value) - base
+            if all || d >= (v.touch ? Self.typoMarginTouch : Self.typoMarginKana) {
+                hits.append(TypoHit(candidate: c, reading: v.reading, diff: d, touch: v.touch, base: base))
+            }
+        }
+        converter.stopComposition()
+        return hits.sorted { $0.diff > $1.diff }
+    }
     private var rawValid = true
     /// 変換エンジンの候補のあいだに入れる候補（打った英字、数字の全角・漢数字）と、入れる位置
     private var extras: [String] = []
@@ -502,14 +580,22 @@ final class Composer {
     }
 
     /// roman が true なら、ローマ字としてかなに直しながら入れる（英字キーボードの日本語入力）
-    func insert(_ s: String, roman: Bool = false) {
+    func insert(_ s: String, roman: Bool = false, alts: [String] = []) {
         clearPredictions()
         selectedIndex = nil
         // 入力が空から始まるときは、前に打った英字の記録を捨てる（確定や全削除のあとに残っていた）
         if composing.isEmpty { rawRoman = ""; rawValid = true }
         // 文節を区切っていた場合も、入力は末尾に足す
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
+        let before = composing.convertTarget.count
         composing.insertAtCursorPosition(s, inputStyle: roman ? .roman2kana : .direct)
+        // 打ち間違いの代わりの文字を、読みの1文字ごとに覚える（読みの長さと合わなくなったら捨てる）
+        let added = composing.convertTarget.count - before
+        if altStack.count == before, added >= 1 {
+            altStack.append(contentsOf: (0..<added).map { $0 == added - 1 ? alts : [] })
+        } else {
+            altStack = Array(repeating: [], count: composing.convertTarget.count)
+        }
         if roman || (!s.isEmpty && s.allSatisfy { $0.isASCII && $0.isLetter }) {
             rawRoman += s
         } else {
@@ -525,6 +611,7 @@ final class Composer {
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.deleteBackwardFromCursorPosition(count: 1)
         composing.insertAtCursorPosition(s, inputStyle: .direct)
+        if !altStack.isEmpty { altStack[altStack.count - 1] = [] }
         rawValid = false
         markDirty()
         return true
@@ -545,6 +632,7 @@ final class Composer {
         }
         _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
         composing.deleteBackwardFromCursorPosition(count: 1)
+        while altStack.count > composing.convertTarget.count { altStack.removeLast() }
         syncRaw()
         markDirty()
     }
@@ -692,6 +780,7 @@ final class Composer {
         rawRoman = ""
         rawValid = true
         extras = []
+        altStack = []
     }
 
     /// 辞書が読めているかを確かめる（調整バーの「変換の診断」で表示）
@@ -792,6 +881,14 @@ final class Composer {
                 "\(c.rubyCount == r.count ? "全" : (c.rubyCount > r.count ? "予" : "短"))\(c.text)(\(String(format: "%.1f", Float(c.value))))"
             }
             lines.append("\(r)：\(s.joined(separator: " "))")
+        }
+        lines.append("――打ち間違いの候補（代わりの読み：点数の差）――")
+        for r in ["こんにちわ", "ありかとう", "おはよお", "てんき", "ありがとう", "きがする"] {
+            let hs = typoScan(r, touch: [], all: true)
+            if hs.isEmpty { lines.append("\(r)：代わりなし"); continue }
+            lines.append("\(r)（元 \(String(format: "%.1f", hs[0].base))）：" + hs.prefix(5).map {
+                "\($0.reading)=\($0.candidate.text)(\(String(format: "%+.1f", $0.diff)))"
+            }.joined(separator: " "))
         }
         return lines.joined(separator: "\n")
     }
@@ -983,6 +1080,14 @@ final class Composer {
         }
         candidates = prioritizeChosen(found)
         buildLive()
+        // 打ち間違いの候補（「これかな？」）：代わりの読みで点数が大きく上がるものを、3番目に足す
+        if typoCorrection, !isSegmented, converterReady {
+            let r = composing.convertTarget
+            let hits = typoScan(r, touch: altStack.count == r.count ? altStack : [])
+            let have = Set(candidates.map(\.text))
+            let add = hits.prefix(2).map(\.candidate).filter { !have.contains($0.text) }
+            if !add.isEmpty { candidates.insert(contentsOf: add, at: min(2, candidates.count)) }
+        }
         extras = []
         guard !isSegmented else { return }
         let reading = composing.convertTarget

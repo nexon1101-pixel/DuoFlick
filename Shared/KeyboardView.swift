@@ -928,10 +928,56 @@ final class KeyboardView: UIView {
                 } else {
                     resetFlickHistory()
                 }
+                lastAlts = (a.key.def.id, a.key.def.isCharacter ? altChars(a.key, dir: dir, from: a.start, to: end) : [])
                 onKey?(a.key.def, dir)
             }
         }
         setNeedsDisplay()
+    }
+
+    // MARK: - 打ち間違いの代わりの文字
+
+    /// 直近に打った文字キーの、打ち間違いかもしれない代わりの文字（キーのid, 文字）。
+    /// 方向の境目に近い（フリックの方向の間違い）か、隣のキーに近い（キーの押し間違い）ときに入る
+    private(set) var lastAlts: (keyID: String, chars: [String]) = ("", [])
+
+    private func altChars(_ k: LaidKey, dir: FlickDirection, from s: CGPoint, to e: CGPoint) -> [String] {
+        guard let own = k.def.flickChars, own.count >= 5 else { return [] }
+        let chosen: String = own[dir.rawValue].isEmpty ? own[0] : own[dir.rawValue]
+        var out: [String] = []
+        // フリックの方向：角度が、隣の方向との境目に近いとき、その方向の文字
+        if dir != .tap, let a = flickAngle(k, from: s, to: e) {
+            let b: [CGFloat] = settings.autoCorrect ? flickBounds : [0, 0, 0, 0]
+            let edges: [CGFloat] = (0..<4).map { 45 + 90 * CGFloat($0) + b[$0] }
+            let dirs: [FlickDirection] = [.up, .left, .down, .right]   // edges[i] の先（角度の大きい側）の方向
+            for i in 0..<4 {
+                var d = abs(a - edges[i])
+                if d > 180 { d = 360 - d }
+                guard d < 18 else { continue }
+                let upper = dirs[i]
+                let lower = dirs[(i + 3) % 4]
+                let other = dir == upper ? lower : (dir == lower ? upper : nil)
+                if let o = other, !own[o.rawValue].isEmpty { out.append(own[o.rawValue]) }
+            }
+        }
+        // 隣のキー：触った位置が、ほかの文字キーのすぐ近くにあるとき、そのキーの同じ方向の文字
+        let near: CGFloat = 1.6 * CGFloat(KeyboardSettings.ptPerMM)
+        for o in keys where o.def.id != k.def.id {
+            guard let oc = o.def.flickChars, oc.count >= 5 else { continue }
+            let dx: CGFloat = s.x - o.center.x
+            let dy: CGFloat = s.y - o.center.y
+            let c: CGFloat = cos(o.rotation)
+            let sn: CGFloat = sin(o.rotation)
+            let lx: CGFloat = dx * c + dy * sn
+            let ly: CGFloat = dy * c - dx * sn
+            let ox: CGFloat = max(0, abs(lx) - o.size.width / 2)
+            let oy: CGFloat = max(0, abs(ly) - o.size.height / 2)
+            guard hypot(ox, oy) <= near else { continue }
+            let ch = oc[dir.rawValue].isEmpty ? oc[0] : oc[dir.rawValue]
+            if !ch.isEmpty { out.append(ch) }
+        }
+        var seen = Set<String>()
+        return out.filter { $0 != chosen && seen.insert($0).inserted }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {

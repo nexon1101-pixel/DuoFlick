@@ -330,7 +330,8 @@ final class KeyboardViewController: UIInputViewController {
             let s = pick(chars, dir)
             // 句読点も読みに足す（単独でも変換の候補が出る）。候補を選んでいたら先に確定する
             if composer.selectedIndex != nil { commitAll() }
-            composer.insert(s)
+            let alts = keyboardView.lastAlts.keyID == def.id ? keyboardView.lastAlts.chars : []
+            composer.insert(s, alts: alts)
             updateComposition()
         case .direct(let chars) where def.id.hasPrefix("digit") && !isNumericField:
             // 数字も読みに足して変換する（全角・漢数字の候補が出る。候補を選んでいたら先に確定する）
