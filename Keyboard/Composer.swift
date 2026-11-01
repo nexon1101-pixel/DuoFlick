@@ -428,7 +428,19 @@ final class Composer {
 
     /// 句読点を1つだけ打ったときの、ほかの形（半角・全角）の候補
     private static let punctuationVariants: [Character: [String]] = [
-        "、": ["，", ",", "､"], "。": ["．", ".", "｡"], "？": ["?"], "！": ["!"], "「": ["｢"], "」": ["｣"],
+        "、": ["，", ",", "､", "・", "…"], "。": ["…", "．", ".", "｡", "‥", "・"],
+        "？": ["?", "⁇"], "！": ["!", "‼", "❗"],
+        "「": ["『", "｢", "（", "【", "［", "〈", "《"], "」": ["』", "｣", "）", "】", "］", "〉", "》"],
+        "ー": ["〜", "～", "—", "―", "-", "－"], "・": ["･", "…", "/", "／"],
+        "〜": ["～", "ー", "—"], "…": ["‥", "・・・"],
+    ]
+
+    /// 記号が続いたときの候補（読みがそのまま合うとき）。「。。。」→「…」など
+    private static let punctuationRuns: [String: [String]] = [
+        "。。": ["‥", "…"], "。。。": ["…", "‥", "……"], "、、、": ["…", "・・・"], "・・・": ["…", "‥", "……"],
+        "！！": ["‼", "!!", "！！！"], "？？": ["⁇", "??", "？？？"], "！？": ["⁉", "!?"], "？！": ["⁈", "?!"],
+        "ーー": ["——", "――", "〜〜"], "ーーー": ["——", "――", "〜〜〜"],
+        "〜〜": ["～～", "〜〜〜"],
     ]
 
     /// ひらがな（と長音）だけか
@@ -1097,6 +1109,10 @@ final class Composer {
             // 今日の日付と今の時刻（変換エンジンの候補にない形だけ足す）
             extraAt = 1
             for v in Self.dateTimeCandidates(for: reading) where !have.contains(v) { extras.append(v) }
+        } else if let list = Self.punctuationRuns[reading] {
+            extraAt = 1
+            extrasRememberable = true
+            for v in list where !have.contains(v) { extras.append(v) }
         } else if reading.count == 1, let c = reading.first, let list = Self.punctuationVariants[c] {
             extraAt = 1
             extrasRememberable = true
