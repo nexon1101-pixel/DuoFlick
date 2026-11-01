@@ -738,36 +738,42 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// 上下の行へ移動する。改行で区切られた行が対象（折り返しは iOS から位置が分からないため対象外）
+    /// 上下の行へ移動する。改行で区切られた行が対象（折り返しは iOS から位置が分からないため対象外）。
+    /// 移動先は前または次の行の頭。いまのカーソルが行末にあるときだけ、前または次の行の末
     private func moveCursorVertically(_ lines: Int) {
         guard composer.isEmpty, register == nil else { return }
         composer.clearPredictions()
         refreshBar()
         let proxy = textDocumentProxy
+        // adjustTextPosition は反応が遅れるので、何行ぶんでも手元の文字で位置を計算し、最後に1回だけ動かす
+        let all = Array((proxy.documentContextBeforeInput ?? "") + (proxy.documentContextAfterInput ?? ""))
+        var pos = (proxy.documentContextBeforeInput ?? "").count
+        let startPos = pos
+        func lineStart(_ i: Int) -> Int {
+            var k = i
+            while k > 0, all[k - 1] != "\n" { k -= 1 }
+            return k
+        }
+        func lineEnd(_ i: Int) -> Int {
+            var k = i
+            while k < all.count, all[k] != "\n" { k += 1 }
+            return k
+        }
+        var atEnd = pos >= all.count || all[pos] == "\n"
         for _ in 0..<abs(lines) {
-            let before = proxy.documentContextBeforeInput ?? ""
-            let after = proxy.documentContextAfterInput ?? ""
-            let beforeChars = Array(before)
-            let col = beforeChars.reversed().prefix { $0 != "\n" }.count
             if lines < 0 {
-                // 前の行の同じ位置へ
-                let lineStart = beforeChars.count - col
-                guard lineStart > 0 else { proxy.adjustTextPosition(byCharacterOffset: -col); return }
-                let prevPart = Array(beforeChars[0..<(lineStart - 1)])
-                let prevLen = prevPart.reversed().prefix { $0 != "\n" }.count
-                let target = (lineStart - 1 - prevLen) + min(col, prevLen)
-                proxy.adjustTextPosition(byCharacterOffset: target - beforeChars.count)
+                let ls = lineStart(pos)
+                if ls == 0 { pos = 0; break }   // いちばん上の行：文頭へ
+                let prevEnd = ls - 1
+                pos = atEnd ? prevEnd : lineStart(prevEnd)
             } else {
-                // 次の行の同じ位置へ
-                let afterChars = Array(after)
-                guard let nl = afterChars.firstIndex(of: "\n") else {
-                    proxy.adjustTextPosition(byCharacterOffset: afterChars.count); return
-                }
-                let rest = afterChars[(nl + 1)...]
-                let nextLen = rest.prefix { $0 != "\n" }.count
-                proxy.adjustTextPosition(byCharacterOffset: nl + 1 + min(col, nextLen))
+                let le = lineEnd(pos)
+                if le >= all.count { pos = all.count; break }   // いちばん下の行：文末へ
+                let nextStart = le + 1
+                pos = atEnd ? lineEnd(nextStart) : nextStart
             }
         }
+        if pos != startPos { proxy.adjustTextPosition(byCharacterOffset: pos - startPos) }
     }
 
     // MARK: - 入力欄への反映（本家 azooKey と同じく、確定は insertText で下線付きの文字を置き換える）
