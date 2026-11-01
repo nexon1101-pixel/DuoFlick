@@ -942,10 +942,26 @@ final class Composer {
             }
             let nk = norm(kata), nr = norm(reading)
             func isPlain(_ c: Candidate) -> Bool { let t = norm(c.text); return t == nk || t == nr }
+            // 途中の読みで出やすい変な形（今2値、婚E、コン日）：読みに数字・英字がないのに混ざる形と、
+            // 短い読みで、先頭の1〜2文字だけカタカナで残りが漢字の形は、読みそのままの候補と同じく後ろへ回す
+            let readingHasAscii = reading.contains { $0.isASCII && ($0.isLetter || $0.isNumber) }
+            func isOdd(_ c: Candidate) -> Bool {
+                let t = c.text
+                if !readingHasAscii, t.contains(where: { ($0.isASCII || "０１２３４５６７８９ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ".contains($0)) && ($0.isLetter || $0.isNumber) }) { return true }
+                if n <= 6 {
+                    let scalars = Array(t.unicodeScalars)
+                    let kataLen = scalars.prefix { (0x30A1...0x30FA).contains($0.value) }.count
+                    let hasKanji = scalars.contains { (0x4E00...0x9FFF).contains($0.value) }
+                    let hasHira = scalars.contains { (0x3041...0x3096).contains($0.value) }
+                    if kataLen >= 1, kataLen <= 2, hasKanji, !hasHira { return true }
+                }
+                return false
+            }
             let plain = exact.filter(isPlain)
-            let others = exact.filter { !isPlain($0) }
+            let good = exact.filter { !isPlain($0) && !isOdd($0) }
+            let odd = exact.filter { !isPlain($0) && isOdd($0) }
             let rest = found.filter { !($0.rubyCount == n && !$0.data.isEmpty) }
-            found = others + plain + rest
+            found = good + plain + odd + rest
         }
         candidates = prioritizeChosen(found)
         buildLive()
