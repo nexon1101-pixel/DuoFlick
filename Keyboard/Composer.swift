@@ -789,7 +789,7 @@ final class Composer {
             let list = converter.requestCandidates(ct, options: o).mainResults.prefix(7)
             converter.stopComposition()
             let s = list.map { c in
-                "\(c.rubyCount == r.count ? "全" : (c.rubyCount > r.count ? "予" : "短"))\(c.text)(\(String(format: "%.1f", c.value)))"
+                "\(c.rubyCount == r.count ? "全" : (c.rubyCount > r.count ? "予" : "短"))\(c.text)(\(String(format: "%.1f", Float(c.value))))"
             }
             lines.append("\(r)：\(s.joined(separator: " "))")
         }
