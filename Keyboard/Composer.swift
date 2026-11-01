@@ -778,7 +778,7 @@ final class Composer {
 
         // 途中の読みの判定用：候補ごとの点数（value）と長さ。「全」＝読み全体を覆う候補、「予」＝読みの続きを補った予測
         lines.append("――候補の点数（AIあり／文脈なし）――")
-        for r in ["こんにち", "こんにちは", "かいとう", "とうきょ", "とうきょう", "わたしの", "ありがと", "ありがとう"] {
+        for r in ["こんにち", "こんにちは", "かいとう", "とうきょ", "わたしの", "ありがと", "こうりょして", "して", "どうして", "してって"] {
             var ct = ComposingText()
             ct.insertAtCursorPosition(r, inputStyle: .direct)
             var o = options
