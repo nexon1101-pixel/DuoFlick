@@ -12,8 +12,8 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     SWIFT_OBJC_INTEROP_MODE: objcxx   # Zenzai（llama.cpp）を使うパッケージが C++ 連携でビルドされるため
-    MARKETING_VERSION: "0.37.12"
-    CURRENT_PROJECT_VERSION: "138"
+    MARKETING_VERSION: "0.37.13"
+    CURRENT_PROJECT_VERSION: "139"
     TARGETED_DEVICE_FAMILY: "1,2"
 targets:
   DuoFlick:

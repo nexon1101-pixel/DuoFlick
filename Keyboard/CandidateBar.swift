@@ -32,11 +32,10 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
-        let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swipedDown))
-        swipe.direction = .down
-        swipe.cancelsTouchesInView = true
-        swipe.delegate = self
-        addGestureRecognizer(swipe)
+        // 下へのフリック：短い動きでも拾えるよう、スワイプではなくパンで見る（候補がないときも働く）
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
+        pan.delegate = self
+        addGestureRecognizer(pan)
         scroll.showsHorizontalScrollIndicator = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scroll)
@@ -110,7 +109,27 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         fatalError("init(coder:) has not been implemented")
     }
 
-    @objc private func swipedDown() { onSwipeDown?() }
+    private var panFired = false
+
+    @objc private func panned(_ g: UIPanGestureRecognizer) {
+        switch g.state {
+        case .began: panFired = false
+        case .changed:
+            let t = g.translation(in: self)
+            if !panFired, t.y > 22, abs(t.x) < t.y {
+                panFired = true
+                onSwipeDown?()
+            }
+        default: break
+        }
+    }
+
+    /// 下向きで、縦の動きが大きいときだけ始める（横スクロールや候補のタップの邪魔をしない）
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+        let v = pan.velocity(in: self)
+        return v.y > 0 && abs(v.y) > abs(v.x) * 1.2
+    }
 
     // 横スクロールや候補のタップと一緒に判定する
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
