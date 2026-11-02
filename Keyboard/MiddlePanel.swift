@@ -40,6 +40,15 @@ struct MiddlePanel: View {
         .animation(.easeOut(duration: 0.18), value: model.items.isEmpty)
         .background(Color.gray.opacity(0.28))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        // 下にフリックしたら、キーボードを閉じる（候補が少なくて空きができても、エリア全体で受ける）
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 16).onEnded { v in
+                if v.translation.height > 36, abs(v.translation.width) < v.translation.height / 1.5 {
+                    onSwipeDown?()
+                }
+            }
+        )
     }
 
     private var list: some View {
@@ -58,14 +67,5 @@ struct MiddlePanel: View {
                 Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 0.5)
             }
         }
-        // 下に素早くフリックしたら、キーボードを閉じる
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 24).onEnded { v in
-                if v.translation.height > 60, abs(v.translation.width) < v.translation.height / 2,
-                   v.predictedEndTranslation.height > 200 {
-                    onSwipeDown?()
-                }
-            }
-        )
     }
 }
