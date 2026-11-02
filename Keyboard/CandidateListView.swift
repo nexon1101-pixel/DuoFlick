@@ -202,10 +202,10 @@ final class CandidateCell: UICollectionViewCell {
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(label)
-        rightLine.backgroundColor = UIColor.secondary.withAlphaComponent(0.25)
+        rightLine.backgroundColor = UIColor.secondaryLabel.withAlphaComponent(0.25)
         rightLine.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(rightLine)
-        bottomLine.backgroundColor = UIColor.secondary.withAlphaComponent(0.25)
+        bottomLine.backgroundColor = UIColor.secondaryLabel.withAlphaComponent(0.25)
         bottomLine.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(bottomLine)
         NSLayoutConstraint.activate([
