@@ -485,6 +485,13 @@ final class KeyboardViewController: UIInputViewController {
                     proxy.deleteBackward()
                 }
                 refreshBar()
+            } else if let sel = proxy.selectedText, !sel.isEmpty, composer.focusClause == nil {
+                // 変換中でも、Safari のアドレス欄の補完のように入力欄側で選択されている文字があるときは、それだけを先に消す。
+                // ここで composer.deleteBackward() すると、補完ではなく読みの末尾（しぐ→し）が消えてしまう。
+                // 文節を選び直しているとき（focusClause）は、下線の中の選択なので対象外。そのときは今までどおり composer 側で選び直しを終える。
+                proxy.insertText("")
+                // insertText("") が下線の文字ごと置き換えてしまった場合でも、updateComposition() で同じ読みを下線付きで出し直すので、しぐは残る。
+                updateComposition()
             } else {
                 composer.deleteBackward()
                 updateComposition()
