@@ -504,11 +504,16 @@ final class KeyboardViewController: UIInputViewController {
                 // 診断で分かったこと：Safari の補完は、変換中は selectedText にも前後文脈にも出てこない（どちらも空）。キーボード側からは補完があるかどうかが分からない。
                 // 標準キーボードと同じく、検索欄での最初の⌫は入力欄の deleteBackward にだけ渡し、読みは触らない。入力欄側が補完だけを消すはずで、2回目からは読みを消す。
                 // 補完がなかった場合、この1回で入力欄の下線の末尾が消えて読みとずれるが、次の⌫で読みを消して出し直すと、入力欄と読みはまた合う。
-                // 下線を出し直さないと、入力欄が空になったと見なされて、0.4秒後の空チェックが読みごと消してしまう（build #157 で入力中の文字が全部消えた原因と見る）。
-                // すぐ出し直すので、入力欄が空のままになる時間はなく、読みは残る。
+                // build #158 では、削除のあと必ず出し直していたため、1回目は結局何も変わらなかった。出し直しが、入力欄側の補完をまた出してしまうと見る。
+                // だから、削除のあと入力欄に文字が残っているかどうか（hasText）を見て、残っていれば出し直さない。補完だけ消えた状態を保つ。
+                // 空になってしまったときだけ出し直す（build #157 で、出し直さなかったために空チェックが読みごと消したのを防ぐ）。
                 ghostCleared = true
                 proxy.deleteBackward()
-                updateComposition()
+                if proxy.hasText {
+                    refreshBar()
+                } else {
+                    updateComposition()
+                }
             } else {
                 composer.deleteBackward()
                 updateComposition()
