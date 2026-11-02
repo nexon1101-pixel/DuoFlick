@@ -472,6 +472,12 @@ final class KeyboardViewController: UIInputViewController {
             hidePanel()
             model.toggleGrip()
         case .delete:
+            // 診断用：⌫を押した瞬間の入力欄の状態を残す（変換の診断で見る。Safari の補完が selectedText に出るかどうかが、直し方の分かれ目）
+            let delSel = proxy.selectedText ?? ""
+            let delBefore = proxy.documentContextBeforeInput ?? ""
+            let delAfter = proxy.documentContextAfterInput ?? ""
+            let delReading = composer.reading
+            let delFocus = composer.focusClause != nil
             if dir == .left {
                 deleteLine()
             } else if dir == .up {
@@ -496,6 +502,7 @@ final class KeyboardViewController: UIInputViewController {
                 composer.deleteBackward()
                 updateComposition()
             }
+            lastDeleteTrace = "⌫ \(dir) 押す前: 読み=\(delReading.isEmpty ? "なし" : delReading) 選択=\(delSel.isEmpty ? "なし" : delSel) 前=\(delBefore.isEmpty ? "なし" : delBefore) 後=\(delAfter.isEmpty ? "なし" : delAfter) focus=\(delFocus) hasText=\(proxy.hasText) → 押した後: 読み=\(composer.reading.isEmpty ? "なし" : composer.reading)"
         case .space:
             if composer.isEmpty {
                 composer.clearPredictions()
@@ -533,6 +540,8 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private var lastWidthTap = Date.distantPast
+    /// 診断用：最後に⌫を押したときの入力欄の状態
+    private var lastDeleteTrace = ""
 
     private func toggleSettings() {
         if topHost != nil { hideTop() }
@@ -1456,7 +1465,8 @@ final class KeyboardViewController: UIInputViewController {
                 self.composer.zenzai = self.model.settings.zenzai
                 self.composer.zenzaiHigh = self.model.settings.zenzaiHigh
                 self.updateLeftContext()
-                return self.composer.diagnostics()
+                let del = self.lastDeleteTrace.isEmpty ? "まだ⌫を押していません" : self.lastDeleteTrace
+                return self.composer.diagnostics() + "\n\n――⌫の直前の入力欄――\n" + del
             },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
             onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
