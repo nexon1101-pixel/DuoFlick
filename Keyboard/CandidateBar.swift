@@ -147,6 +147,10 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
 
     /// dimmed が true のときは、文字を薄いグレーにする（「コピー内容の貼り付け」など、候補ではない案内用）
     func show(_ items: [String], selected: Int?, dimmed: Bool = false, reading: String? = nil) {
+        // フリック中に帯が作り直されると、スクロール位置が0に戻って
+        // フリックが途切れる。ドラッグ中・減速中は位置を保つ。
+        let wasInteracting = scroll.isDragging || scroll.isDecelerating
+        let previousOffset = scroll.contentOffset
         let list = Array(items.prefix(Self.maxItems))
         // 同じ内容なら作り直さない（ちらつきと無駄な処理を防ぐ）
         if list == shownItems && selected == shownSelected && dimmed == shownDimmed && reading == shownReading { return }
@@ -202,6 +206,11 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         if let s = selected, let target = stack.arrangedSubviews.first(where: { ($0 as? UIButton)?.tag == s }) {
             layoutIfNeeded()
             scroll.scrollRectToVisible(target.frame.insetBy(dx: -40, dy: 0), animated: true)
+        } else if wasInteracting {
+            // フリック中は位置を保つ。内容の幅が変わったら、はみ出さない範囲に収める。
+            layoutIfNeeded()
+            let maxX = max(0, scroll.contentSize.width - scroll.bounds.width)
+            scroll.setContentOffset(CGPoint(x: min(max(previousOffset.x, 0), maxX), y: 0), animated: false)
         } else {
             scroll.setContentOffset(.zero, animated: false)
         }

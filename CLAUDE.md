@@ -36,6 +36,7 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 | SettingsScreen.swift | 設定画面（一覧）と、キーを見ながら大きさを変える帯（AdjustBar） |
 | Composer.swift | かな漢字変換（AzooKeyKanaKanjiConverter v0.9、revision 固定）。候補・予測・学習・文節 |
 | CandidateBar / CandidateList | 変換候補の帯と一覧 |
+| CandidateListView | 候補の一覧（UIKit の UICollectionView。SwiftUI の CandidateList の代わり） |
 | Optimizer.swift | 打ち比べで最適化（AとBを打って選ぶ） |
 | TextStores / TextListPanel | 定型文とクリップボード履歴（固定できる） |
 | UserDictionary / RegisterPanel | 単語登録 |
@@ -514,3 +515,12 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 - 直し方（仮）：入力中でなく、選択文字があるとき（proxy.selectedText）は、deleteBackward ではなく insertText("") で選択だけを置き換えて消す。効かなければ、削除のあとに前の文字を戻す方法か、診断を考える
 - 補完が消えたあとにSafari側がまた補完を出す動きは、キーボードから止められない可能性がある
 - 実機での確認待ち
+
+## v0.37.16：候補の一覧を UIKit にして、選んだあとの遅れと開閉の重さを直す
+
+- 一覧の重さ（開く・スクロール・確定が遅い、タップしてから次の動作まで体感0.6秒、間違えて開くと閉じられない、予測エリアのフリックが重い）への対応。AI変換はオフ、ユーザ辞書は8語程度、帯からの確定は遅くない、という切り分けから、変換エンジンではなく一覧まわりの作りが原因と見た。
+- 候補の一覧（∨で開くもの）を SwiftUI の CandidateList / LazyFlow から、UIKit の UICollectionView（CandidateListView.swift）に替えた。セルを使い回し、行の枠は幅が変わったときだけ計算してキャッシュする。件数120件、並び・行の高さ46・区切り線は今のまま。
+- 一覧は作り直さず使い回す。開閉は isHidden の切り替えで、開いているかどうかは isCandidateListOpen のフラグで持つ。従来はホストの有無で判断していたため、閉じるアニメーション中に∨を押すと開き直してしまい、閉じられないと感じた。
+- フェードは残す。ただしアニメーションに .allowUserInteraction を付け、状態とキーの復帰はアニメーション開始と同時に済ませる。選んだときは、確定の文字入れや帯の更新をアニメーション完了待ちにしない。閉じるだけのときは帯の再計算を呼ばない。
+- 予測エリアのフリック対策：帯の show() は、ドラッグ中・減速中に作り直すとき、スクロール位置を0に戻さず保つ。真ん中のエリアは、内容が変わったときだけ panelModel.items を入れ替える（毎回代入すると再描画が走り、予測が出た直後のフリックと重なった）。
+- SwiftUI の CandidateList.swift は残っているが、一覧ではもう使っていない。真ん中のエリア（MiddlePanel）は LazyFlow のまま。

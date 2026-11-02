@@ -6,6 +6,18 @@ final class KeyboardViewController: UIInputViewController {
     private let dictionary = UserDictionaryStore()
     private let keyboardView = KeyboardView()
     private let candidateBar = CandidateBar()
+    /// 候補の一覧（UIKit）。作り直さず使い回し、開閉は isHidden の切り替えで行う。
+    private lazy var candidateListView: CandidateListView = {
+        let v = CandidateListView()
+        v.isHidden = true
+        v.translatesAutoresizingMaskIntoConstraints = false
+        v.onSelect = { [weak self] i in self?.selectFromCandidateList(i) }
+        return v
+    }()
+    /// 一覧が開いているかどうか。アニメーション中も含め、こちらの状態が正。
+    /// 従来はホストの有無で判断していたため、閉じるアニメーション中に
+    /// ∨を押すと「開いていない」と判断して開き直してしまっていた。
+    private var isCandidateListOpen = false
     private let guideView = GuideOverlayView()
     private let composer = Composer()
     private let optimizer = OptimizerModel()
@@ -58,6 +70,14 @@ final class KeyboardViewController: UIInputViewController {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
+        // 一覧は一度だけ作り、隠したまま置いておく。開閉で作り直さない。
+        view.addSubview(candidateListView)
+        NSLayoutConstraint.activate([
+            candidateListView.topAnchor.constraint(equalTo: candidateBar.bottomAnchor),
+            candidateListView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            candidateListView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            candidateListView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
         NSLayoutConstraint.activate([
             keyboardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             keyboardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -916,7 +936,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         let canExpand = !composer.isEmpty && !composer.candidateTexts.isEmpty
         if !canExpand { hideCandidateList() }
-        candidateBar.setExpand(visible: canExpand, expanded: listHost != nil)
+        candidateBar.setExpand(visible: canExpand, expanded: isCandidateListOpen)
     }
 
     /// 改行キー・空白キーの表示をiOS標準に合わせる（入力中は「確定」「次候補」）
@@ -964,65 +984,68 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 候補の一覧
 
-    private var listHost: UIHostingController<CandidateList>?
-
     private func toggleCandidateList() {
-        if listHost != nil { hideCandidateList(); refreshBar(); return }
+        if isCandidateListOpen { closeCandidateList(); return }
         composer.refreshIfNeeded()
-        let list = CandidateList(items: Array(composer.listTexts.prefix(120))) { [weak self] i in
-            guard let self else { return }
-            self.hideCandidateList()
-            self.commitCandidate(i)
-        }
-        let host = UIHostingController(rootView: list)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        host.view.backgroundColor = .clear
-        addChild(host)
-        view.addSubview(host.view)
-        host.didMove(toParent: self)
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: candidateBar.bottomAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        ])
-        listHost = host
-        // 上から下へスライドして出す
-        host.view.alpha = 0
-        host.view.transform = CGAffineTransform(translationX: 0, y: -24)
-        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut) {
-            host.view.alpha = 1
-            host.view.transform = .identity
-        }
+        candidateListView.setItems(Array(composer.listTexts.prefix(120)))
+        openCandidateList()
+    }
+
+    private func openCandidateList() {
+        guard !isCandidateListOpen else { return }
+        isCandidateListOpen = true
+        candidateListView.isHidden = false
+        // フェードは残すが、タップはフェード中も通す。
+        candidateListView.alpha = 0
+        candidateListView.transform = CGAffineTransform(translationX: 0, y: -24)
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut, .allowUserInteraction], animations: {
+            self.candidateListView.alpha = 1
+            self.candidateListView.transform = .identity
+        }, completion: nil)
         // 一覧を開いている間は、キーが透けて文字と重ならないよう、キーを隠す
         keyboardView.isHidden = true
         middleHost?.view.isHidden = true
         candidateBar.setExpand(visible: true, expanded: true)
     }
 
-    private func hideCandidateList() {
-        guard let host = listHost else { return }
-        // 状態はすぐ戻し（続けて開閉できるように）、見た目だけ上へスライドしながら消す
-        listHost = nil
-        host.willMove(toParent: nil)
-        // 一覧の文字がキーと重ならないよう、先に一覧を消してから、キーを出す
-        UIView.animate(withDuration: 0.14, delay: 0, options: .curveEaseIn, animations: {
-            host.view.alpha = 0
-            host.view.transform = CGAffineTransform(translationX: 0, y: -24)
+    /// 一覧を閉じる。状態はすぐ切り替え、見た目だけフェードする。
+    /// フェード中でも次のタップが通るよう、.allowUserInteraction を付ける。
+    /// 閉じるだけのときは帯の再計算を呼ばない（再計算が重さの原因だったため）。
+    private func closeCandidateList() {
+        guard isCandidateListOpen else { return }
+        isCandidateListOpen = false
+        // キーはすぐ復帰させる。見た目だけフェードする。
+        keyboardView.isHidden = false
+        keyboardView.alpha = 0
+        middleHost?.view.isHidden = false
+        middleHost?.view.alpha = 0
+        let canExpand = !composer.isEmpty && !composer.candidateTexts.isEmpty
+        candidateBar.setExpand(visible: canExpand, expanded: false)
+        UIView.animate(withDuration: 0.14, delay: 0, options: [.curveEaseIn, .allowUserInteraction], animations: {
+            self.candidateListView.alpha = 0
+            self.candidateListView.transform = CGAffineTransform(translationX: 0, y: -24)
         }, completion: { _ in
-            host.view.removeFromSuperview()
-            host.removeFromParent()
-            // すぐ開き直されたときは、キーを出さない
-            guard self.listHost == nil else { return }
-            self.keyboardView.alpha = 0
-            self.middleHost?.view.alpha = 0
-            self.keyboardView.isHidden = false
-            self.middleHost?.view.isHidden = false
-            UIView.animate(withDuration: 0.12) {
-                self.keyboardView.alpha = 1
-                self.middleHost?.view.alpha = 1
-            }
+            // フェード中に開き直されていたら、隠さない。
+            guard !self.isCandidateListOpen else { return }
+            self.candidateListView.isHidden = true
+            self.candidateListView.alpha = 1
+            self.candidateListView.transform = .identity
         })
+        UIView.animate(withDuration: 0.12, delay: 0, options: [.allowUserInteraction], animations: {
+            self.keyboardView.alpha = 1
+            self.middleHost?.view.alpha = 1
+        }, completion: nil)
+    }
+
+    private func hideCandidateList() {
+        closeCandidateList()
+    }
+
+    /// 一覧から選んだとき。状態とキーの復帰を先に済ませてから確定する。
+    /// 確定の文字入れや帯の更新を、アニメーション完了待ちにしない。
+    private func selectFromCandidateList(_ index: Int) {
+        closeCandidateList()
+        commitCandidate(index)
     }
 
     /// 「@」のあとに出す、よく使うメールのドメイン
@@ -1067,9 +1090,14 @@ final class KeyboardViewController: UIInputViewController {
     private func showBar(_ items: [String], selected: Int?, dimmed: Bool = false) {
         let reading = composer.isEmpty ? nil : composer.readingLabel
         candidateBar.show(items, selected: selected, dimmed: dimmed, reading: reading)
-        panelModel.items = Array((composer.isEmpty ? items : composer.listTexts).prefix(60))
-        panelModel.selected = selected
-        panelModel.reading = reading ?? ""
+        // 真ん中のエリアは、内容が変わったときだけ更新する。
+        // 毎回代入すると @Published が再描画を誘発し、予測が出た直後の
+        // フリックと重なって重くなるため。
+        let panelItems = Array((composer.isEmpty ? items : composer.listTexts).prefix(60))
+        if panelModel.items != panelItems { panelModel.items = panelItems }
+        if panelModel.selected != selected { panelModel.selected = selected }
+        let readingText = reading ?? ""
+        if panelModel.reading != readingText { panelModel.reading = readingText }
     }
 
     private func updateMiddlePanel(_ rect: CGRect?) {
