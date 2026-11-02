@@ -213,15 +213,7 @@ final class KeyboardViewController: UIInputViewController {
             let before = proxy.documentContextBeforeInput ?? ""
             let after = proxy.documentContextAfterInput ?? ""
             // 変換待ちのまま送信されたとき：アプリが下線付きの文字ごと入力欄を空にしている。読みと候補を捨てる
-            // ただし、検索欄の最初の⌫の直後（ghostCleared）は捨てない。入力欄の削除が、入力欄側の補完だけを消したのか、下線ごと消したのかが、
-            // 削除直後ではまだ分からない（build #159 で、直後の hasText を信じて出し直さず、そのあとここで読みごと消えた）。下の遅れた出し直しに任せる。
             if !self.composer.isEmpty {
-                if self.ghostCleared {
-                    if self.markedActive, self.markedVisible {
-                        self.scheduleEmptyCheck(after: 0.6)
-                    }
-                    return
-                }
                 if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty, !proxy.hasText {
                     self.composer.reset()
                     self.markedActive = false
@@ -328,8 +320,6 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         domainCandidates = []
-        // ⌫以外のキーを押したら、検索欄の補完を消した印を戻す（次の⌫は、また補完消しから始める）
-        if case .delete = def.action {} else { ghostCleared = false }
         let expectedClose = pairClose
         pairClose = nil
         // 変換待ち（読みに下線が出ている間）は、ABC・地球儀・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
@@ -482,12 +472,6 @@ final class KeyboardViewController: UIInputViewController {
             hidePanel()
             model.toggleGrip()
         case .delete:
-            // 診断用：⌫を押した瞬間の入力欄の状態を残す（変換の診断で見る。Safari の補完が selectedText に出るかどうかが、直し方の分かれ目）
-            let delSel = proxy.selectedText ?? ""
-            let delBefore = proxy.documentContextBeforeInput ?? ""
-            let delAfter = proxy.documentContextAfterInput ?? ""
-            let delReading = composer.reading
-            let delFocus = composer.focusClause != nil
             if dir == .left {
                 deleteLine()
             } else if dir == .up {
@@ -501,34 +485,10 @@ final class KeyboardViewController: UIInputViewController {
                     proxy.deleteBackward()
                 }
                 refreshBar()
-            } else if let sel = proxy.selectedText, !sel.isEmpty, composer.focusClause == nil {
-                // 変換中でも、Safari のアドレス欄の補完のように入力欄側で選択されている文字があるときは、それだけを先に消す。
-                // ここで composer.deleteBackward() すると、補完ではなく読みの末尾（しぐ→し）が消えてしまう。
-                // 文節を選び直しているとき（focusClause）は、下線の中の選択なので対象外。そのときは今までどおり composer 側で選び直しを終える。
-                proxy.insertText("")
-                // insertText("") が下線の文字ごと置き換えてしまった場合でも、updateComposition() で同じ読みを下線付きで出し直すので、しぐは残る。
-                updateComposition()
-            } else if proxy.keyboardType == .webSearch, !ghostCleared {
-                // 診断で分かったこと：Safari の補完は、変換中は selectedText にも前後文脈にも出てこない（どちらも空）。キーボード側からは補完があるかどうかが分からない。
-                // 標準キーボードと同じく、検索欄での最初の⌫は入力欄の deleteBackward にだけ渡し、読みは触らない。入力欄側が補完だけを消すはずで、2回目からは読みを消す。
-                // 補完がなかった場合、この1回で入力欄の下線の末尾が消えて読みとずれるが、次の⌫で読みを消して出し直すと、入力欄と読みはまた合う。
-                // build #158 では、削除のあと必ず出し直していたため、1回目は結局何も変わらなかった。出し直しが、入力欄側の補完をまた出してしまうと見る。
-                // build #159 では、削除直後の hasText を見て出し直さないことにしたが、また全部消えた。削除直後の hasText は古い値のままで、
-                // 実際は入力欄が空になっていたのに出し直さず、そのあと空チェックが読みを消したと見る。
-                // だから、削除直後の hasText は信じない。いったん出し直さずに置いて、0.7秒後にあらためて入力欄が空かどうかを見て、空ならそのとき出し直す。
-                // 空でなければ、補完だけ消えた状態が保たれているので、何もしない。空チェックは上の ghostCleared の分岐で、この間は読みを捨てない。
-                ghostCleared = true
-                proxy.deleteBackward()
-                refreshBar()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-                    guard let self, self.ghostCleared, !self.composer.isEmpty, !self.textDocumentProxy.hasText else { return }
-                    self.updateComposition()
-                }
             } else {
                 composer.deleteBackward()
                 updateComposition()
             }
-            lastDeleteTrace = "⌫ \(dir) 押す前: 読み=\(delReading.isEmpty ? "なし" : delReading) 選択=\(delSel.isEmpty ? "なし" : delSel) 前=\(delBefore.isEmpty ? "なし" : delBefore) 後=\(delAfter.isEmpty ? "なし" : delAfter) focus=\(delFocus) hasText=\(proxy.hasText) 種類=\(proxy.keyboardType ?? .default) ghost済=\(ghostCleared) → 押した後: 読み=\(composer.reading.isEmpty ? "なし" : composer.reading)"
         case .space:
             if composer.isEmpty {
                 composer.clearPredictions()
@@ -566,10 +526,6 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private var lastWidthTap = Date.distantPast
-    /// 診断用：最後に⌫を押したときの入力欄の状態
-    private var lastDeleteTrace = ""
-    /// 検索欄で、最初の⌫を入力欄の deleteBackward に渡して補完を消したかどうか。次の文字を打つまで、2回目からは読みを消す
-    private var ghostCleared = false
 
     private func toggleSettings() {
         if topHost != nil { hideTop() }
@@ -1493,8 +1449,7 @@ final class KeyboardViewController: UIInputViewController {
                 self.composer.zenzai = self.model.settings.zenzai
                 self.composer.zenzaiHigh = self.model.settings.zenzaiHigh
                 self.updateLeftContext()
-                let del = self.lastDeleteTrace.isEmpty ? "まだ⌫を押していません" : self.lastDeleteTrace
-                return self.composer.diagnostics() + "\n\n――⌫の直前の入力欄――\n" + del
+                return self.composer.diagnostics()
             },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
             onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
