@@ -1013,6 +1013,10 @@ final class KeyboardViewController: UIInputViewController {
     /// 閉じるだけのときは帯の再計算を呼ばない（再計算が重さの原因だったため）。
     private func closeCandidateList() {
         guard isCandidateListOpen else { return }
+        // まずスクロールを止める。減速中のまま閉じると、閉じるタップが
+        // スクロール停止に消費されたり、フェード中に一覧が動き続けたりする。
+        candidateListView.stopScrolling()
+        candidateBar.stopScrolling()
         isCandidateListOpen = false
         // キーはすぐ復帰させる。見た目だけフェードする。
         keyboardView.isHidden = false

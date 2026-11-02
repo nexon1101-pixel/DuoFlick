@@ -216,6 +216,11 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         }
     }
 
+    /// 帯の横スクロール（減速中も含む）をその場で止める。
+    func stopScrolling() {
+        scroll.setContentOffset(scroll.contentOffset, animated: false)
+    }
+
     /// ∨ボタンを出すか、一覧を開いているか（開いているときは∧）
     func setExpand(visible: Bool, expanded: Bool) {
         expandButton.isHidden = !visible

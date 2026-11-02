@@ -48,6 +48,12 @@ final class CandidateListView: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// スクロール（減速中も含む）をその場で止める。
+    /// ∧で閉じるときに呼び、減速が終わるのを待たずに閉じられるようにする。
+    func stopScrolling() {
+        collectionView.setContentOffset(collectionView.contentOffset, animated: false)
+    }
+
     /// 候補を入れ替える。同じ内容なら何もしない（再描画・スクロール位置の
     /// リセットを避けるため）。変わったときは先頭に戻す。
     /// - Returns: 内容が変わったかどうか
