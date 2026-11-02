@@ -213,7 +213,15 @@ final class KeyboardViewController: UIInputViewController {
             let before = proxy.documentContextBeforeInput ?? ""
             let after = proxy.documentContextAfterInput ?? ""
             // 変換待ちのまま送信されたとき：アプリが下線付きの文字ごと入力欄を空にしている。読みと候補を捨てる
+            // ただし、検索欄の最初の⌫の直後（ghostCleared）は捨てない。入力欄の削除が、入力欄側の補完だけを消したのか、下線ごと消したのかが、
+            // 削除直後ではまだ分からない（build #159 で、直後の hasText を信じて出し直さず、そのあとここで読みごと消えた）。下の遅れた出し直しに任せる。
             if !self.composer.isEmpty {
+                if self.ghostCleared {
+                    if self.markedActive, self.markedVisible {
+                        self.scheduleEmptyCheck(after: 0.6)
+                    }
+                    return
+                }
                 if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty, !proxy.hasText {
                     self.composer.reset()
                     self.markedActive = false
@@ -505,14 +513,16 @@ final class KeyboardViewController: UIInputViewController {
                 // 標準キーボードと同じく、検索欄での最初の⌫は入力欄の deleteBackward にだけ渡し、読みは触らない。入力欄側が補完だけを消すはずで、2回目からは読みを消す。
                 // 補完がなかった場合、この1回で入力欄の下線の末尾が消えて読みとずれるが、次の⌫で読みを消して出し直すと、入力欄と読みはまた合う。
                 // build #158 では、削除のあと必ず出し直していたため、1回目は結局何も変わらなかった。出し直しが、入力欄側の補完をまた出してしまうと見る。
-                // だから、削除のあと入力欄に文字が残っているかどうか（hasText）を見て、残っていれば出し直さない。補完だけ消えた状態を保つ。
-                // 空になってしまったときだけ出し直す（build #157 で、出し直さなかったために空チェックが読みごと消したのを防ぐ）。
+                // build #159 では、削除直後の hasText を見て出し直さないことにしたが、また全部消えた。削除直後の hasText は古い値のままで、
+                // 実際は入力欄が空になっていたのに出し直さず、そのあと空チェックが読みを消したと見る。
+                // だから、削除直後の hasText は信じない。いったん出し直さずに置いて、0.7秒後にあらためて入力欄が空かどうかを見て、空ならそのとき出し直す。
+                // 空でなければ、補完だけ消えた状態が保たれているので、何もしない。空チェックは上の ghostCleared の分岐で、この間は読みを捨てない。
                 ghostCleared = true
                 proxy.deleteBackward()
-                if proxy.hasText {
-                    refreshBar()
-                } else {
-                    updateComposition()
+                refreshBar()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                    guard let self, self.ghostCleared, !self.composer.isEmpty, !self.textDocumentProxy.hasText else { return }
+                    self.updateComposition()
                 }
             } else {
                 composer.deleteBackward()
