@@ -320,6 +320,8 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         domainCandidates = []
+        // ⌫以外のキーを押したら、検索欄の補完を消した印を戻す（次の⌫は、また補完消しから始める）
+        if case .delete = def.action {} else { ghostCleared = false }
         let expectedClose = pairClose
         pairClose = nil
         // 変換待ち（読みに下線が出ている間）は、ABC・地球儀・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
@@ -498,11 +500,18 @@ final class KeyboardViewController: UIInputViewController {
                 proxy.insertText("")
                 // insertText("") が下線の文字ごと置き換えてしまった場合でも、updateComposition() で同じ読みを下線付きで出し直すので、しぐは残る。
                 updateComposition()
+            } else if proxy.keyboardType == .webSearch, !ghostCleared {
+                // 診断で分かったこと：Safari の補完は、変換中は selectedText にも前後文脈にも出てこない（どちらも空）。キーボード側からは補完があるかどうかが分からない。
+                // 標準キーボードと同じく、検索欄での最初の⌫は入力欄の deleteBackward にだけ渡し、読みは触らない。入力欄側が補完だけを消すはずで、2回目からは読みを消す。
+                // 補完がなかった場合、この1回で入力欄の下線の末尾が消えて読みとずれるが、次の⌫で読みを消して出し直すと、入力欄と読みはまた合う。
+                ghostCleared = true
+                proxy.deleteBackward()
+                refreshBar()
             } else {
                 composer.deleteBackward()
                 updateComposition()
             }
-            lastDeleteTrace = "⌫ \(dir) 押す前: 読み=\(delReading.isEmpty ? "なし" : delReading) 選択=\(delSel.isEmpty ? "なし" : delSel) 前=\(delBefore.isEmpty ? "なし" : delBefore) 後=\(delAfter.isEmpty ? "なし" : delAfter) focus=\(delFocus) hasText=\(proxy.hasText) → 押した後: 読み=\(composer.reading.isEmpty ? "なし" : composer.reading)"
+            lastDeleteTrace = "⌫ \(dir) 押す前: 読み=\(delReading.isEmpty ? "なし" : delReading) 選択=\(delSel.isEmpty ? "なし" : delSel) 前=\(delBefore.isEmpty ? "なし" : delBefore) 後=\(delAfter.isEmpty ? "なし" : delAfter) focus=\(delFocus) hasText=\(proxy.hasText) 種類=\(proxy.keyboardType ?? .default) ghost済=\(ghostCleared) → 押した後: 読み=\(composer.reading.isEmpty ? "なし" : composer.reading)"
         case .space:
             if composer.isEmpty {
                 composer.clearPredictions()
@@ -542,6 +551,8 @@ final class KeyboardViewController: UIInputViewController {
     private var lastWidthTap = Date.distantPast
     /// 診断用：最後に⌫を押したときの入力欄の状態
     private var lastDeleteTrace = ""
+    /// 検索欄で、最初の⌫を入力欄の deleteBackward に渡して補完を消したかどうか。次の文字を打つまで、2回目からは読みを消す
+    private var ghostCleared = false
 
     private func toggleSettings() {
         if topHost != nil { hideTop() }
