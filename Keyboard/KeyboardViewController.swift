@@ -458,7 +458,12 @@ final class KeyboardViewController: UIInputViewController {
                 deleteWord()
             } else if composer.isEmpty {
                 composer.clearPredictions()
-                proxy.deleteBackward()
+                if let sel = proxy.selectedText, !sel.isEmpty {
+                    // 選択中（Safari のアドレス欄の補完など）は、選択だけを消す。deleteBackward だと補完の文字に加えて1文字余分に消えたため、置き換えで消す
+                    proxy.insertText("")
+                } else {
+                    proxy.deleteBackward()
+                }
                 refreshBar()
             } else {
                 composer.deleteBackward()
