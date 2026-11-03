@@ -166,10 +166,20 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    /// 設定の取り込みで最後に確認したクリップボードの変更回数
+    private var lastImportChangeCount: Int?
+
     /// アプリ本体の設定画面からコピーされた設定があれば読み込む（読んだら、クリップボードの印の入った文字は消す）
+    /// クリップボードが変わっていないときは中身を読まない（開くたびに読むと、
+    /// 他アプリからの読み取り承認が先に消費されて、貼り付けが初回だけ失敗する）。
+    /// 文字があるのに読めない（承認待ち）ときは印を進めず、次に開いたときにもう一度試す
     private func importAppSettings() {
-        guard UIPasteboard.general.hasStrings, let text = UIPasteboard.general.string,
-              let prefs = SharedPrefs.decode(text) else { return }
+        let pb = UIPasteboard.general
+        guard pb.changeCount != lastImportChangeCount else { return }
+        guard pb.hasStrings else { lastImportChangeCount = pb.changeCount; return }
+        guard let text = pb.string else { return }
+        lastImportChangeCount = pb.changeCount
+        guard let prefs = SharedPrefs.decode(text) else { return }
         UIPasteboard.general.string = ""
         KeyboardSettings.applyShared(prefs)
         var s = model.settings
@@ -1104,7 +1114,21 @@ final class KeyboardViewController: UIInputViewController {
         if panelModel.reading != readingText { panelModel.reading = readingText }
     }
 
+    /// 真ん中の候補パネルを出す範囲（レイアウトのたびに合わせ直すために覚えておく）
+    private var lastPanelRect: CGRect?
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // 外側→内側など画面が切り替わった直後は、パネルの位置が古いまま残って
+        // ⌫などのキーを覆うことがあるので、覚えている範囲に合わせ直す
+        if let rect = lastPanelRect, let host = middleHost, host.view.frame != rect {
+            host.view.frame = rect
+            view.bringSubviewToFront(host.view)
+        }
+    }
+
     private func updateMiddlePanel(_ rect: CGRect?) {
+        lastPanelRect = rect
         // 真ん中に候補を出すときは、上の候補の帯は要らない
         candidateBar.isHidden = rect != nil || panelHost != nil
         guard let rect else {
@@ -1156,15 +1180,30 @@ final class KeyboardViewController: UIInputViewController {
     private var pasteChip = false
     private var imageChip = false
 
+    /// 「コピー内容の貼り付け」を押したとき。他アプリでコピーした文字は、
+    /// 初回の読み取りが承認待ちで空になることがあるので、少し置いて読み直す
+    private func pasteFromChip(attempt: Int) {
+        if let text = UIPasteboard.general.string, !text.isEmpty {
+            composer.clearPredictions()
+            textDocumentProxy.insertText(text)
+            lastCommit = nil
+            refreshBar()
+            return
+        }
+        if attempt < 3 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                guard let self, self.pasteChip, self.composer.isEmpty else { return }
+                self.pasteFromChip(attempt: attempt + 1)
+            }
+        } else {
+            refreshBar()
+        }
+    }
+
     private func selectFromBar(_ index: Int) {
         if imageChip, composer.isEmpty { return }
         if pasteChip, composer.isEmpty {
-            if let text = UIPasteboard.general.string, !text.isEmpty {
-                composer.clearPredictions()
-                textDocumentProxy.insertText(text)
-                lastCommit = nil
-            }
-            refreshBar()
+            pasteFromChip(attempt: 0)
             return
         }
         if composer.isEmpty, domainCandidates.isEmpty, !englishWords.isEmpty, index < englishWords.count,

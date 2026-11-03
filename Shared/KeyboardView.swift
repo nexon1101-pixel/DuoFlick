@@ -118,6 +118,7 @@ final class KeyboardView: UIView {
     private(set) var keys: [LaidKey] = []
     private var keysBottom: CGFloat = 0
     private var layoutWidth: CGFloat = 0
+    private var layoutSize: CGSize = .zero
 
     /// 改行・確定キーの上でこの秒数だけ止めると、キャンセルになる
     private static let cancelHold: TimeInterval = 0.35
@@ -187,7 +188,9 @@ final class KeyboardView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        if bounds.width != layoutWidth { relayout() }
+        // 幅だけでなく高さの変化でも並べ直す（折りたたみの開閉や画面の切り替えで、
+        // 幅が同じまま高さとキー位置だけ変わることがあるため）
+        if bounds.size != layoutSize { relayout() }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -197,7 +200,14 @@ final class KeyboardView: UIView {
 
     private func relayout() {
         layoutWidth = bounds.width
+        layoutSize = bounds.size
         guard layoutWidth > 0 else { return }
+        // 並べ直しの最中に残っているタッチは、古いキーの位置を持ったままになる。
+        // 画面の切り替え直後にフリックが効かなくなる原因になるので、ここで打ち切る
+        if !active.isEmpty {
+            for a in active.values { a.timer?.invalidate(); a.cancelTimer?.invalidate() }
+            active.removeAll()
+        }
         let result = KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: layoutWidth, topInset: inset(for: layoutWidth))
         keys = result.keys
         panelRect = result.panelRect
