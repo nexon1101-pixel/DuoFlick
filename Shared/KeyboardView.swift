@@ -145,6 +145,10 @@ final class KeyboardView: UIView {
         var ay: CGFloat = 0
         var accX: CGFloat = 0
         var accY: CGFloat = 0
+        /// ⌫フリックの繰り返し削除（行削除・語削除）用：見張りのタイマー、いま効いている方向、1回でも繰り返したか
+        var flickTimer: Timer?
+        var flickDir: FlickDirection?
+        var flickFired = false
         /// 数字キー：0なら0〜4、1なら5〜9の枠を開いた
         var numberStage: Int?
         var numberAnchor: CGPoint = .zero
@@ -205,7 +209,7 @@ final class KeyboardView: UIView {
         // 並べ直しの最中に残っているタッチは、古いキーの位置を持ったままになる。
         // 画面の切り替え直後にフリックが効かなくなる原因になるので、ここで打ち切る
         if !active.isEmpty {
-            for a in active.values { a.timer?.invalidate(); a.cancelTimer?.invalidate() }
+            for a in active.values { a.timer?.invalidate(); a.cancelTimer?.invalidate(); a.flickTimer?.invalidate() }
             active.removeAll()
         }
         let result = KeyboardLayout.make(settings: settings, mode: mode, grip: grip, width: layoutWidth, topInset: inset(for: layoutWidth))
@@ -882,13 +886,41 @@ final class KeyboardView: UIView {
                 }
             }
             if a.key.def.isDelete, !a.repeated {
-                // ⌫をフリックし始めたら長押しの連続削除はやめる
                 let movedMM: CGFloat = hypot(p.x - a.start.x, p.y - a.start.y) / CGFloat(KeyboardSettings.ptPerMM)
-                if movedMM >= CGFloat(settings.flickMinMM) { a.timer?.invalidate() }
+                if movedMM >= CGFloat(settings.flickMinMM) {
+                    // ⌫をフリックし始めたら長押しの連続削除はやめる
+                    a.timer?.invalidate()
+                    // 行削除（左）・語削除（上）は、フリックした位置で指を止めているあいだ繰り返す
+                    trackDeleteFlickRepeat(a, direction(a.key, from: a.start, to: p))
+                } else {
+                    trackDeleteFlickRepeat(a, .tap)
+                }
             }
             if a.cursorMode { moveTrackpad(a, to: p, time: t.timestamp) }
         }
         setNeedsDisplay()
+    }
+
+    /// ⌫の行削除（左フリック）・語削除（上フリック）を、指をその位置に止めているあいだ繰り返す。
+    /// フリックしてすぐ離したときは今までどおり1回だけ（離したときの処理が担当する）。
+    /// 方向が変わったり、フリックの範囲から戻ったりしたら繰り返しは止める
+    private func trackDeleteFlickRepeat(_ a: Active, _ dir: FlickDirection) {
+        guard dir == .left || dir == .up else {
+            a.flickTimer?.invalidate(); a.flickTimer = nil; a.flickDir = nil
+            return
+        }
+        if a.flickDir == dir, a.flickTimer != nil { return }
+        a.flickDir = dir
+        a.flickTimer?.invalidate()
+        let key = a.key
+        a.flickTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self, weak a] _ in
+            guard let self, let a else { return }
+            a.flickFired = true
+            self.onKey?(key.def, dir)
+            a.flickTimer = Timer.scheduledTimer(withTimeInterval: 0.22, repeats: true) { [weak self] _ in
+                self?.onKey?(key.def, dir)
+            }
+        }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -896,7 +928,8 @@ final class KeyboardView: UIView {
             guard let a = active.removeValue(forKey: t) else { continue }
             a.timer?.invalidate()
             a.cancelTimer?.invalidate()
-            if a.repeated { resetFlickHistory() }   // 長押しで連続して消したときは、対応が取れないので学習しない
+            a.flickTimer?.invalidate()
+            if a.repeated || a.flickFired { resetFlickHistory() }   // 連続して消したときは、対応が取れないので学習しない
             if a.key.def.isNumberPad {
                 // タップだけでは何も入れない。2回続けてタップすると数字を固定し、固定中にタップすると解除する
                 if a.numberStage == nil {
@@ -922,7 +955,7 @@ final class KeyboardView: UIView {
             if a.cursorMode, !a.trackMoved, case .space = a.key.def.action {
                 onSpaceHold?()
             }
-            if !a.repeated && !a.cursorMode {
+            if !a.repeated && !a.flickFired && !a.cursorMode {
                 let end = t.location(in: self)
                 // フリックして改行・確定キーの上で少し止めてから離したら、キャンセル（何も入れない）
                 if let since = a.cancelSince, Date().timeIntervalSince(since) >= Self.cancelHold,
@@ -992,7 +1025,7 @@ final class KeyboardView: UIView {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches {
-            if let a = active.removeValue(forKey: t) { a.timer?.invalidate(); a.cancelTimer?.invalidate() }
+            if let a = active.removeValue(forKey: t) { a.timer?.invalidate(); a.cancelTimer?.invalidate(); a.flickTimer?.invalidate() }
         }
         setNeedsDisplay()
     }
