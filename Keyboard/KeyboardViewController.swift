@@ -161,9 +161,15 @@ final class KeyboardViewController: UIInputViewController {
             clipboard.capture()
             clipboardTimer?.invalidate()
             clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-                self?.clipboard.capture()
+                guard let self else { return }
+                self.clipboard.capture()
+                // 開いた直後は貼り付けチップの判定が間に合わないことがあるので、後から出し直す
+                if self.composer.isEmpty, !self.pasteChip, !self.imageChip { self.refreshBar() }
             }
         }
+        // 開くたびに帯を出し直す。立ち上げ直後（viewDidLoad）の初回判定だけでは、
+        // 読み取り自体はできていても貼り付けチップが出ないことがあるため
+        refreshBar()
     }
 
     /// 設定の取り込みで最後に確認したクリップボードの変更回数
@@ -1015,6 +1021,7 @@ final class KeyboardViewController: UIInputViewController {
         // 一覧を開いている間は、キーが透けて文字と重ならないよう、キーを隠す
         keyboardView.isHidden = true
         middleHost?.view.isHidden = true
+        setMiddleGrabberVisible(false)
         candidateBar.setExpand(visible: true, expanded: true)
     }
 
@@ -1033,6 +1040,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.alpha = 0
         middleHost?.view.isHidden = false
         middleHost?.view.alpha = 0
+        if lastPanelRect != nil { setMiddleGrabberVisible(true) }
         let canExpand = !composer.isEmpty && !composer.candidateTexts.isEmpty
         candidateBar.setExpand(visible: canExpand, expanded: false)
         UIView.animate(withDuration: 0.14, delay: 0, options: [.curveEaseIn, .allowUserInteraction], animations: {
@@ -1117,6 +1125,48 @@ final class KeyboardViewController: UIInputViewController {
     /// 真ん中の候補パネルを出す範囲（レイアウトのたびに合わせ直すために覚えておく）
     private var lastPanelRect: CGRect?
 
+    /// 真ん中の配置のとき、キーボード上端の真ん中に出すつまみ。
+    /// 通常の配置で候補の帯のつまみを下に引いて閉じるのと同じ場所・同じ操作にする。
+    /// パネルの外（キーボード側）に置くので、下への引きがパネル内の一覧のスクロールに取られない
+    private var middleGrabber: UIView?
+
+    private func setMiddleGrabberVisible(_ visible: Bool) {
+        if visible {
+            if middleGrabber == nil {
+                let v = UIView()
+                v.backgroundColor = .clear
+                let pill = UIView()
+                pill.backgroundColor = UIColor.systemGray.withAlphaComponent(0.55)
+                pill.layer.cornerRadius = 2.5
+                pill.frame = CGRect(x: 62, y: 10.5, width: 36, height: 5)
+                pill.isUserInteractionEnabled = false
+                v.addSubview(pill)
+                v.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(middleGrabberPanned(_:))))
+                view.addSubview(v)
+                middleGrabber = v
+            }
+            middleGrabber?.isHidden = false
+            layoutMiddleGrabber()
+            if let v = middleGrabber { view.bringSubviewToFront(v) }
+        } else {
+            middleGrabber?.isHidden = true
+        }
+    }
+
+    private func layoutMiddleGrabber() {
+        guard let v = middleGrabber, view.bounds.width > 0 else { return }
+        v.frame = CGRect(x: (view.bounds.width - 160) / 2, y: 2, width: 160, height: 26)
+    }
+
+    @objc private func middleGrabberPanned(_ g: UIPanGestureRecognizer) {
+        guard g.state == .ended else { return }
+        let t = g.translation(in: view)
+        if t.y > 24, abs(t.x) < t.y / 1.5 {
+            commitAll()
+            dismissKeyboard()
+        }
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         // 外側→内側など画面が切り替わった直後は、パネルの位置が古いまま残って
@@ -1125,6 +1175,8 @@ final class KeyboardViewController: UIInputViewController {
             host.view.frame = rect
             view.bringSubviewToFront(host.view)
         }
+        layoutMiddleGrabber()
+        if let v = middleGrabber, !v.isHidden { view.bringSubviewToFront(v) }
     }
 
     private func updateMiddlePanel(_ rect: CGRect?) {
@@ -1132,12 +1184,14 @@ final class KeyboardViewController: UIInputViewController {
         // 真ん中に候補を出すときは、上の候補の帯は要らない
         candidateBar.isHidden = rect != nil || panelHost != nil
         guard let rect else {
+            setMiddleGrabberVisible(false)
             if let h = middleHost {
                 h.willMove(toParent: nil); h.view.removeFromSuperview(); h.removeFromParent()
                 middleHost = nil
             }
             return
         }
+        setMiddleGrabberVisible(!isCandidateListOpen)
         if middleHost == nil {
             let host = UIHostingController(rootView: MiddlePanel(model: panelModel, onSelect: { [weak self] i in
                 self?.selectFromBar(i)

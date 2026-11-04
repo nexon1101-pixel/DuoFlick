@@ -16,34 +16,6 @@ struct MiddlePanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // つまみと閉じるボタン。候補の一覧（スクロールする側）に重ならない場所に置くので、
-            // 下フリックがスクロールに取られて閉じない、ということが起きない
-            ZStack {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.5))
-                    .frame(width: 36, height: 5)
-                HStack {
-                    Spacer()
-                    Button { onSwipeDown?() } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color(uiColor: Palette.text).opacity(0.75))
-                            .frame(width: 36, height: 20)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(height: 20)
-            .padding(.horizontal, 6)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 10).onEnded { v in
-                    if v.translation.height > 20, abs(v.translation.width) < v.translation.height / 1.5 {
-                        onSwipeDown?()
-                    }
-                }
-            )
             if !model.reading.isEmpty, !model.items.isEmpty {
                 HStack {
                     Button { onReading?() } label: {
