@@ -359,8 +359,12 @@ final class KeyboardViewController: UIInputViewController {
         domainCandidates = []
         let expectedClose = pairClose
         pairClose = nil
-        // 変換待ち（読みに下線が出ている間）は、ABC・地球儀・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
-        if composingLocked, !isAllowedWhileComposing(def) { return }
+        // 変換待ち（読みに下線が出ている間）は、ABC・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
+        if composingLocked {
+            if !isAllowedWhileComposing(def) { return }
+            // 地球儀はタップ（確定してから切り替え）だけ通し、フリック（設定・履歴・定型文）は変換中は止める（v0.37.31）
+            if case .nextKeyboard = def.action, dir != .tap { return }
+        }
         let proxy = textDocumentProxy
         // ⌫の下フリック：確定の取り消し（↺）
         if case .delete = def.action, dir == .down {
@@ -665,11 +669,13 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// 変換待ちの間に止めるキー：入力を中断してしまう、ABC・地球儀・片手／両手・設定・記号面・貼り付けなどのキー。
-    /// かな・数字・⌫・空白（次候補）・改行（確定）・小゛゜など、読みを打ち続けるキーは止めない
+    /// 変換待ちの間に止めるキー：入力を中断してしまう、ABC・片手／両手・設定・記号面・貼り付けなどのキー。
+    /// かな・数字・⌫・空白（次候補）・改行（確定）・小゛゜など、読みを打ち続けるキーは止めない。
+    /// 地球儀は止めない：タップの処理側が「確定してから切り替え」になっていて安全なため（v0.37.31）。
+    /// ただし地球儀のフリック（設定・履歴・定型文）は変換中は handle 側で止める
     private func isAllowedWhileComposing(_ def: KeyDef) -> Bool {
         switch def.action {
-        case .modeSwitch, .nextKeyboard, .gripSwitch, .settings, .layer, .paste, .widthToggle, .splitKeys: return false
+        case .modeSwitch, .gripSwitch, .settings, .layer, .paste, .widthToggle, .splitKeys: return false
         default: return true
         }
     }
