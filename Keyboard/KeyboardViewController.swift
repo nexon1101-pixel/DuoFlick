@@ -142,6 +142,8 @@ final class KeyboardViewController: UIInputViewController {
             self.keyboardView.grip = self.model.grip
             self.keyboardView.settings = s
             self.updateHeight(force: true)
+            // 矢印はレイアウト任せだと「次の文字入力まで」古い位置のままになるので即時更新（v0.37.27）
+            self.updateFanDockButton()
         }
         refreshBar()
     }
@@ -152,6 +154,7 @@ final class KeyboardViewController: UIInputViewController {
         view.alpha = 1
         // アプリ本体の設定画面で変えた設定を読み直す
         model.reload()
+        updateFanDockButton()
         keyboardView.grip = model.grip
         dictionary.reload()
         phrases.reload()
