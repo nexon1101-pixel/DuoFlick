@@ -756,7 +756,7 @@ final class Composer {
     private(set) var rangeLength = 0
     /// 範囲だけの候補
     private var rangeCandidates: [Candidate] = []
-    /// 範囲の後ろの読みを、仮で変換した形（入力欄で「範囲だけが変換中」と見せるため）
+    /// 範囲の後ろの読みを、そのまま見せる形（変換はしない。v0.37.35〜）
     private var rangeRemainderText = ""
 
     /// 範囲の読み（先頭から rangeLength 文字）
@@ -828,9 +828,8 @@ final class Composer {
         }
         rangeCandidates = list
         selectedIndex = nil
-        // 範囲の後ろは、仮で変換した形にしておく（入力欄の表示で使う。確定はしていない）
-        let rest = String(composing.convertTarget.dropFirst(rangeLength))
-        rangeRemainderText = rest.isEmpty ? "" : (bestExact(rest)?.text ?? rest)
+        // 範囲の後ろは変換せず、読みのまま見せる（「勝手に変換される」と感じさせないため。v0.37.35）
+        rangeRemainderText = String(composing.convertTarget.dropFirst(rangeLength))
     }
 
     /// 範囲選択で候補を選ぶ：範囲だけを確定し、残りの読みは変換待ちのまま残す

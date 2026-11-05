@@ -348,18 +348,18 @@ final class KeyboardViewController: UIInputViewController {
             }
             return
         }
-        // 範囲だけを変換中で残している間は、空白（候補の選択）以外のキーを、
-        // まず状態を解いて読み全体の変換待ちに戻してから処理する。⌫は解くこと自体で消費する
-        if soloRemainder != nil {
+        // 範囲選択の確定待ちの間は、空白（候補の選択）以外のキーを、
+        // まず範囲を解いて読み全体の変換待ちに戻してから処理する。⌫は解くこと自体で消費する
+        if composer.rangeMode {
             switch def.action {
             case .space:
                 break
             case .delete:
-                cancelSoloRange()
+                composer.exitRangeMode()
                 updateComposition()
                 return
             default:
-                cancelSoloRange()
+                composer.exitRangeMode()
                 updateComposition()
             }
         }
@@ -920,10 +920,6 @@ final class KeyboardViewController: UIInputViewController {
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()
-        } else if soloRemainder != nil {
-            // 範囲だけを変換中で残している間は、入力欄には範囲だけを出す
-            let t = composer.rangeMarkedText
-            showMarked(t, highlight: NSRange(location: 0, length: (t as NSString).length))
         } else {
             showMarked(composer.markedText, highlight: composer.markedHighlight)
         }
@@ -1434,8 +1430,7 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// 範囲だけを変換中で残している間、範囲の後ろの読み（文書には入れず、キーボード側で覚えている。v0.37.34〜）
-    private var soloRemainder: String?
+    /// 範囲選択は入力欄の表示（全体の変換待ち＋範囲の選択表示）の中だけで完結させる（v0.37.35〜）
 
     /// 範囲選択の一連の動きの記録（切り分け用。「変換の診断」の末尾に出す）。
     /// v0.37.30: メモリだけだとキーボードのプロセスが再起動したときに消えるので、共有の保存先に残す
@@ -1462,31 +1457,10 @@ final class KeyboardViewController: UIInputViewController {
             traceRange("離す: 範囲モードでないため何もしない")
             return
         }
+        // 離しても範囲選択はそのまま続ける。入力欄には読み全体が変換待ちで残り、
+        // 範囲の部分だけが選択されて見える（文書への特別な操作はしない。v0.37.35）
         updateComposition()
-        // ライブ変換／Zenzai の設定に関わらず行う（v0.37.28 で条件を撤廃。今回の報告の原因ではない）
-        let suffix = composer.rangeSuffixReading
-        guard !suffix.isEmpty else {
-            traceRange("離す: 後ろが空なのでソロ化しない")
-            return
-        }
-        // 後ろの分は文書に入れず、キーボード側で覚えるだけにする（v0.37.34）。
-        // 文書への操作は下線の付け替えだけ＝ふだんの変換と同じ動きなので、下線表示を
-        // 平らにするアプリでも本文が壊れない（v0.37.26〜33 の文書手術は廃止）
-        soloRemainder = suffix
-        traceRange("離す: 範囲=\(composer.rangeLength)文字 後ろ=[\(suffix)]（キーボード側で保持）")
-        updateComposition()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            guard let self else { return }
-            self.traceRange("離して0.6秒後: \(self.proxyContext(self.textDocumentProxy)) solo=\(self.soloRemainder != nil) 範囲モード=\(self.composer.rangeMode)")
-        }
-    }
-
-    /// 範囲だけを変換中で残した状態を解く：後ろの分はキーボード側で覚えているだけなので、
-    /// 範囲をやめて読み全体の変換待ちに戻すだけでよい（文書への操作は下線の付け替えだけ）
-    private func cancelSoloRange() {
-        guard soloRemainder != nil else { return }
-        soloRemainder = nil
-        composer.exitRangeMode()
+        traceRange("離す: 範囲=\(composer.rangeLength)文字（範囲選択を継続）")
     }
 
     private func commitCandidate(_ index: Int) {
@@ -1499,12 +1473,6 @@ final class KeyboardViewController: UIInputViewController {
         guard let text = composer.commit(candidateAt: index) else { return }
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
         insertCommitted(text)
-        // 範囲だけを変換中で残していた場合は、キーボード側で覚えていた後ろの分が
-        // 残りの読みとして変換待ちに戻る（composer 側が持っている）。文書側の後始末はいらない
-        if soloRemainder != nil {
-            soloRemainder = nil
-            traceRange("候補で確定: 範囲を確定、後ろの分を変換待ちに戻す")
-        }
         if composer.isEmpty {
             lastCommit = cursorInsidePair ? nil : (text, reading)   // カーソルが括弧の中にあると取り消せないので覚えない
             refreshBar()
