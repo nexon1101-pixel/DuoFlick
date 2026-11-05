@@ -32,12 +32,11 @@ final class KeyboardViewController: UIInputViewController {
     private var keyboardTop: NSLayoutConstraint?
     private lazy var barHeight = candidateBar.heightAnchor.constraint(equalToConstant: CandidateBar.height)
 
-    /// 候補の帯の高さ。読みを出すとき（ライブ変換・範囲選択・変換選択中）は、読みの余白のぶんだけ高くする
+    /// 候補の帯の高さ。読み表示は v0.37.38 で廃止したので、余白は付けず常に一定
     private func updateBarHeight() {
-        let margin = (model.settings.liveConversion || composer.rangeMode || composer.readingLabel != nil) ? CandidateBar.readingMargin : 0
-        let h = CandidateBar.height + margin
+        let h = CandidateBar.height
         if barHeight.constant != h { barHeight.constant = h }
-        candidateBar.topMargin = margin
+        candidateBar.topMargin = 0
         if keyboardView.topInset != h { keyboardView.topInset = h }
     }
     private var lastWidth: CGFloat = 0
@@ -961,12 +960,6 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 入力中は変換候補、確定直後は予測、それ以外は何も出さない
     private func refreshBar() {
-        // 読みラベルを出すかどうかが変わったら、帯の余白を付け替える
-        let showsReading = model.settings.liveConversion || composer.rangeMode || composer.readingLabel != nil
-        if showsReading != lastShowsReading {
-            lastShowsReading = showsReading
-            updateBarHeight()
-        }
         updateKeyLabels()
         if !composer.isEmpty {
             pasteChip = false
@@ -1152,16 +1145,15 @@ final class KeyboardViewController: UIInputViewController {
     private var middleHost: UIHostingController<MiddlePanel>?
 
     private func showBar(_ items: [String], selected: Int?, dimmed: Bool = false) {
-        let reading = composer.isEmpty ? nil : composer.readingLabel
-        candidateBar.show(items, selected: selected, dimmed: dimmed, reading: reading)
+        // 帯に読みは出さない（範囲選択中も含め、ユーザーの指示で v0.37.38 から廃止）
+        candidateBar.show(items, selected: selected, dimmed: dimmed, reading: nil)
         // 真ん中のエリアは、内容が変わったときだけ更新する。
         // 毎回代入すると @Published が再描画を誘発し、予測が出た直後の
         // フリックと重なって重くなるため。
         let panelItems = Array((composer.isEmpty ? items : composer.listTexts).prefix(60))
         if panelModel.items != panelItems { panelModel.items = panelItems }
         if panelModel.selected != selected { panelModel.selected = selected }
-        let readingText = reading ?? ""
-        if panelModel.reading != readingText { panelModel.reading = readingText }
+        if panelModel.reading != "" { panelModel.reading = "" }
     }
 
     /// 扇形のとき、端にうっすら出す「寄せる側を変える」ボタン
@@ -1383,9 +1375,6 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 範囲選択を始めたときの範囲の長さ（ドラッグの移動量を文字数に変えるための起点）
     private var rangeStartLength = 0
-    /// 前回、帯に読みを出していたか（帯の高さを切り替えるため）
-    private var lastShowsReading = false
-
     /// 候補の長押し：範囲選択に入る。最初の範囲は、その候補の先頭の文節
     private func rangePressBegan(_ index: Int) {
         // パネル側の長押しで付いた選択抑制が、選択として届かなかった場合の後始末
@@ -1417,10 +1406,6 @@ final class KeyboardViewController: UIInputViewController {
         if composer.setRangeLength(rangeStartLength + steps) {
             traceRange("ドラッグ: 範囲=\(composer.rangeLength)文字")
             showMarked(composer.markedText, highlight: composer.markedHighlight)
-            // どこまでが変換対象か、帯とパネルの読みラベルでも見せる
-            candidateBar.setReadingLabel(composer.readingLabel)
-            let rt = composer.readingLabel ?? ""
-            if panelModel.reading != rt { panelModel.reading = rt }
         }
     }
 

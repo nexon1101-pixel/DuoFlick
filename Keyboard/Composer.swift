@@ -178,30 +178,24 @@ final class Composer {
         liveBestIndex = bi
     }
 
-    /// 帯に小さく出す読み。文節を選び直している間は、その文節の読み
+    /// ライブ変換で使う読み（文節を選び直している間は、その文節の読み）。
+    /// 帯への読み表示は v0.37.38 で廃止したので、これは変換内部の判定用
     var readingLabel: String? {
         // 範囲選択中は、ライブ変換でなくても範囲の読みを出す（どこまでが変換対象か分かるように）
         if rangeMode, !composing.isEmpty { return rangeReading }
-        if liveConversion, !composing.isEmpty {
-            if let k = focusClause, k < liveClauses.count { return liveClauses[k].reading }
-            return composing.convertTarget
-        }
-        // 変換選択中は、ライブ変換でなくても読みを出す（入力欄は候補の形に変わって、元の読みが見えなくなるため）
-        if selectedIndex != nil, !composing.isEmpty { return composing.convertTarget }
-        return nil
+        guard liveConversion, !composing.isEmpty else { return nil }
+        if let k = focusClause, k < liveClauses.count { return liveClauses[k].reading }
+        return composing.convertTarget
     }
 
     /// 読みのひらがなのまま確定する（帯の左端の読みを押したとき）。文節を選び直している間は、その文節だけひらがなにする。
     /// 文節の場合は nil（確定はしない）
     func commitReadingAsIs() -> String? {
-        guard !composing.isEmpty else { return nil }
+        guard liveConversion, !composing.isEmpty else { return nil }
         if focusClause != nil {
-            guard liveConversion else { return nil }
             if let i = clauseAlts.firstIndex(where: { $0.text == readingLabel }) { _ = chooseClauseAlt(i) }
             return nil
         }
-        // ライブ変換中か、変換選択中（範囲選択は除く）なら、読みをそのまま確定できる
-        guard liveConversion || (selectedIndex != nil && !rangeMode) else { return nil }
         let text = composing.convertTarget
         reset()
         return text
