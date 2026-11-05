@@ -181,6 +181,7 @@ final class Composer {
     /// ライブ変換で、帯に小さく出す読み。文節を選び直している間は、その文節の読み
     var readingLabel: String? {
         guard liveConversion, !composing.isEmpty else { return nil }
+        if rangeMode { return rangeReading }
         if let k = focusClause, k < liveClauses.count { return liveClauses[k].reading }
         return composing.convertTarget
     }
@@ -211,6 +212,11 @@ final class Composer {
 
     /// 選び直している文節を、入力欄の下線の文字の中で選択して見せる範囲
     var markedHighlight: NSRange? {
+        if rangeMode {
+            // 範囲選択：先頭から範囲ぶんを選択状態に見せる
+            if liveUsable { return NSRange(location: 0, length: ((rangeCandidates.first?.text ?? rangeReading) as NSString).length) }
+            return NSRange(location: 0, length: (rangeReading as NSString).length)
+        }
         guard let k = focusClause, liveUsable, k < liveClauses.count else { return nil }
         let before = liveClauses[..<k].map(\.shown).joined()
         return NSRange(location: (before as NSString).length, length: (liveClauses[k].shown as NSString).length)
@@ -308,9 +314,15 @@ final class Composer {
         return composing.convertTarget
     }
 
-    var candidateTexts: [String] { focusClause != nil ? clauseAlts.map(\.text) : withExtra(candidates.map(\.text)) }
+    var candidateTexts: [String] {
+        if rangeMode { return rangeCandidates.map(\.text) }
+        return focusClause != nil ? clauseAlts.map(\.text) : withExtra(candidates.map(\.text))
+    }
     /// 一覧に出す候補（多すぎると重いので200個まで）
-    var listTexts: [String] { focusClause != nil ? clauseAlts.map(\.text) : withExtra(candidates.prefix(200).map(\.text)) }
+    var listTexts: [String] {
+        if rangeMode { return rangeCandidates.map(\.text) }
+        return focusClause != nil ? clauseAlts.map(\.text) : withExtra(candidates.prefix(200).map(\.text))
+    }
 
     // MARK: - 英字の候補（ローマ字かな入力で、打った英字のまま入れたいとき）
 
@@ -408,7 +420,10 @@ final class Composer {
         return t
     }
 
-    private var displayCount: Int { focusClause != nil ? clauseAlts.count : candidates.count + extras.count }
+    private var displayCount: Int {
+        if rangeMode { return rangeCandidates.count }
+        return focusClause != nil ? clauseAlts.count : candidates.count + extras.count
+    }
 
     /// 帯の番号から変換候補の番号を求める（入れた候補なら nil）
     private func candidateIndex(forDisplay i: Int) -> Int? {
@@ -593,6 +608,8 @@ final class Composer {
 
     /// roman が true なら、ローマ字としてかなに直しながら入れる（英字キーボードの日本語入力）
     func insert(_ s: String, roman: Bool = false, alts: [String] = []) {
+        // 範囲選択の途中で打ち足したら、範囲選択は終えて通常の入力に戻る
+        if rangeMode { exitRangeMode() }
         clearPredictions()
         selectedIndex = nil
         // 入力が空から始まるときは、前に打った英字の記録を捨てる（確定や全削除のあとに残っていた）
@@ -630,6 +647,11 @@ final class Composer {
     }
 
     func deleteBackward() {
+        if rangeMode {
+            // 範囲選択の途中なら、まず範囲選択を終える（文節の選び直しと同じ）
+            exitRangeMode()
+            return
+        }
         if focusClause != nil {
             // 文節を選び直している途中なら、選び直しを終える（選んだ文節はそのまま）
             focusClause = nil
@@ -695,6 +717,7 @@ final class Composer {
 
     /// 候補を確定する。確定した文字を返す。
     func commit(candidateAt index: Int) -> String? {
+        if rangeMode { return commitRange(candidateAt: index) }
         guard focusClause == nil, index < displayCount else { return nil }
         guard let ci = candidateIndex(forDisplay: index) else {
             // 打った英字のまま確定する
@@ -723,34 +746,96 @@ final class Composer {
         return c.text
     }
 
-    /// 候補の先頭の文節だけを確定し、残りの読みは変換待ちのまま残す（候補の長押し用）。
-    /// 長い読みで変換が今ひとつのとき、単語ごとに切り出して変換していくためのもの。
-    /// 先頭の文節が候補全体と同じときは、通常の確定と同じになる
-    func commitFirstClause(candidateAt index: Int) -> String? {
-        guard focusClause == nil, index < displayCount else { return nil }
-        guard let ci = candidateIndex(forDisplay: index) else { return nil }
+    // MARK: - 範囲選択（候補を長押しして、そのままドラッグで「前から何文字ぶん変換するか」を自分で決める）
+
+    /// 範囲選択の状態か
+    private(set) var rangeMode = false
+    /// 前から何文字を範囲にするか
+    private(set) var rangeLength = 0
+    /// 範囲だけの候補
+    private var rangeCandidates: [Candidate] = []
+
+    /// 範囲の読み（先頭から rangeLength 文字）
+    private var rangeReading: String { String(composing.convertTarget.prefix(rangeLength)) }
+
+    /// 候補の長押しで範囲選択に入る。最初の範囲は、その候補の先頭の文節の長さ
+    func enterRangeMode(candidateAt index: Int) -> Bool {
+        guard focusClause == nil, !composing.isEmpty, index < displayCount,
+              let ci = candidateIndex(forDisplay: index) else { return false }
         let c = candidates[ci]
         let first = Candidate.makePrefixClauseCandidate(data: c.data[...])
-        guard !first.data.isEmpty, first.data.count < c.data.count else {
-            return commit(candidateAt: index)
-        }
-        composing.prefixComplete(composingCount: first.composingCount)
+        let n = first.data.reduce(0) { $0 + $1.ruby.count }
+        rangeLength = n > 0 ? n : min(1, composing.convertTarget.count)
+        rangeMode = true
         selectedIndex = nil
-        converter.updateLearningData(first)
-        remember(first)
+        loadRangeCandidates()
+        return true
+    }
+
+    /// ドラッグで範囲の長さを変える。変わったら true
+    @discardableResult
+    func setRangeLength(_ n: Int) -> Bool {
+        guard rangeMode else { return false }
+        let clamped = min(max(n, 1), composing.convertTarget.count)
+        guard clamped != rangeLength else { return false }
+        rangeLength = clamped
+        loadRangeCandidates()
+        return true
+    }
+
+    /// 範囲選択をやめる（確定はしない）
+    func exitRangeMode() {
+        rangeMode = false
+        rangeLength = 0
+        rangeCandidates = []
+    }
+
+    /// 範囲の読みだけを変換して、候補を集める（文節の候補を集めるのと同じやり方）
+    private func loadRangeCandidates() {
+        let reading = rangeReading
+        var ct = ComposingText()
+        ct.insertAtCursorPosition(reading, inputStyle: .direct)
+        var o = options
+        o.needTypoCorrection = false
+        let n = reading.count
+        var list: [Candidate] = []
+        var seen = Set<String>()
+        for c in converter.requestCandidates(ct, options: o).mainResults
+        where c.rubyCount == n && seen.insert(c.text).inserted {
+            list.append(c)
+            if list.count >= 40 { break }
+        }
+        for t in [reading, Self.katakana(reading)] where seen.insert(t).inserted {
+            list.append(Candidate(text: t, value: -20, composingCount: .surfaceCount(n), lastMid: 501,
+                                  data: [DicdataElement(word: t, ruby: Self.katakana(reading),
+                                                        cid: CIDData.固有名詞.cid, mid: MIDData.一般.mid, value: -20)]))
+        }
+        rangeCandidates = list
+        selectedIndex = nil
+    }
+
+    /// 範囲選択で候補を選ぶ：範囲だけを確定し、残りの読みは変換待ちのまま残す
+    func commitRange(candidateAt index: Int) -> String? {
+        guard rangeMode, index >= 0, index < rangeCandidates.count else { return nil }
+        let c = rangeCandidates[index]
+        exitRangeMode()
+        composing.prefixComplete(composingCount: c.composingCount)
+        selectedIndex = nil
+        converter.updateLearningData(c)
+        remember(c)
         scheduleSave()
         if composing.isEmpty {
             converter.stopComposition()
             candidates = []
-            startPredictions(after: first)
+            startPredictions(after: c)
         } else {
             rawValid = false
-            converter.setCompletedData(first)
+            converter.setCompletedData(c)
             // 残りの読みは区切りなしで変換し直す
             _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
             refresh()
         }
-        return first.text
+        return c.text
     }
 
     /// 選んでいる候補（なければひらがな）で全部確定する
@@ -819,6 +904,7 @@ final class Composer {
         liveReading = ""
         focusClause = nil
         clauseAlts = []
+        exitRangeMode()
         rawRoman = ""
         rawValid = true
         extras = []

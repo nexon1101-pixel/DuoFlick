@@ -15,7 +15,10 @@ struct MiddlePanel: View {
     let onSelect: (Int) -> Void
     var onSwipeDown: (() -> Void)? = nil
     var onReading: (() -> Void)? = nil
-    var onLongPress: ((Int) -> Void)? = nil
+    /// 範囲選択：長押しで入り、そのまま横ドラッグで範囲を伸縮し、離して決める
+    var onRangeEnter: ((Int) -> Void)? = nil
+    var onRangeDrag: ((CGFloat) -> Void)? = nil
+    var onRangeEnded: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,10 +69,19 @@ struct MiddlePanel: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .onLongPressGesture(minimumDuration: 0.4) {
-                model.suppressSelect = i
-                onLongPress?(i)
-            }
+            .gesture(LongPressGesture(minimumDuration: 0.4).sequenced(before: DragGesture(minimumDistance: 0))
+                .onChanged { value in
+                    switch value {
+                    case .first(true):
+                        model.suppressSelect = i
+                        onRangeEnter?(i)
+                    case .second(_, let drag?):
+                        onRangeDrag?(drag.translation.width)
+                    default:
+                        break
+                    }
+                }
+                .onEnded { _ in onRangeEnded?() })
             .overlay(alignment: .bottom) {
                 Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 0.5)
             }

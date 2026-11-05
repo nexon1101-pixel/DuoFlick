@@ -14,10 +14,12 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     }
 
     var onSelect: ((Int) -> Void)?
-    /// 候補を長押ししたとき（先頭の文節だけ確定する）
-    var onLongPress: ((Int) -> Void)?
-    /// 長押しが成立したボタン。その直後のタップ（指を離したときの通常選択）は飲み込む
-    private var longPressedTag: Int?
+    /// 候補の長押しで範囲選択に入ったとき／ドラッグで範囲が動いたとき（横の移動量）／指を離したとき
+    var onRangeBegan: ((Int) -> Void)?
+    var onRangeDragged: ((CGFloat) -> Void)?
+    var onRangeEnded: (() -> Void)?
+    /// 範囲選択のドラッグ中かどうか（帯側の長押し判定は帯全体で持ち、候補を作り直しても途切れないようにする）
+    private var rangeActive = false
     /// 左上の読み（ひらがな）を押したとき
     var onReading: (() -> Void)?
     /// 右端の∨／∧ボタン（候補の一覧を開く・閉じる）
@@ -40,6 +42,10 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
         pan.delegate = self
         addGestureRecognizer(pan)
+        // 候補の長押し（範囲選択）：判定は帯全体で持つ
+        let lp = UILongPressGestureRecognizer(target: self, action: #selector(rangePressed(_:)))
+        lp.minimumPressDuration = 0.4
+        addGestureRecognizer(lp)
         scroll.showsHorizontalScrollIndicator = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scroll)
@@ -196,9 +202,6 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
             b.setContentCompressionResistancePriority(.required, for: .horizontal)
             b.setContentHuggingPriority(.required, for: .horizontal)
             b.addTarget(self, action: #selector(tapped(_:)), for: .touchUpInside)
-            let lp = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
-            lp.minimumPressDuration = 0.4
-            b.addGestureRecognizer(lp)
             stack.addArrangedSubview(b)
         }
         // 候補が出始めるときは、上から下へスライドして出す
@@ -239,13 +242,27 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func tapped(_ b: UIButton) {
-        if longPressedTag == b.tag { longPressedTag = nil; return }
         onSelect?(b.tag)
     }
 
-    @objc private func longPressed(_ g: UILongPressGestureRecognizer) {
-        guard g.state == .began, let b = g.view as? UIButton else { return }
-        longPressedTag = b.tag
-        onLongPress?(b.tag)
+    /// 帯のどこかを長押ししたら、その位置の候補で範囲選択に入り、そのまま横ドラッグで範囲を伸縮する
+    @objc private func rangePressed(_ g: UILongPressGestureRecognizer) {
+        switch g.state {
+        case .began:
+            let p = g.location(in: stack)
+            guard let b = stack.arrangedSubviews.compactMap({ $0 as? UIButton })
+                .first(where: { $0.frame.contains(p) }) else { return }
+            rangeActive = true
+            scroll.isScrollEnabled = false
+            onRangeBegan?(b.tag)
+        case .changed:
+            if rangeActive { onRangeDragged?(g.translation(in: self).x) }
+        case .ended, .cancelled, .failed:
+            if rangeActive { onRangeEnded?() }
+            rangeActive = false
+            scroll.isScrollEnabled = true
+        default:
+            break
+        }
     }
 }

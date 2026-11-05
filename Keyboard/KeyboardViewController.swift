@@ -121,7 +121,9 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.onCursor = { [weak self] steps in self?.cursorDrag(steps) }
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
-        candidateBar.onLongPress = { [weak self] i in self?.handleCandidateLongPress(i) }
+        candidateBar.onRangeBegan = { [weak self] i in self?.rangePressBegan(i) }
+        candidateBar.onRangeDragged = { [weak self] dx in self?.rangePressDragged(dx) }
+        candidateBar.onRangeEnded = { [weak self] in self?.rangePressEnded() }
         candidateBar.onReading = { [weak self] in self?.commitReadingAsIs() }
         candidateBar.onExpand = { [weak self] in self?.toggleCandidateList() }
         candidateBar.onSwipeDown = { [weak self] in
@@ -1241,7 +1243,9 @@ final class KeyboardViewController: UIInputViewController {
                 self?.commitAll()
                 self?.dismissKeyboard()
             }, onReading: { [weak self] in self?.commitReadingAsIs() },
-               onLongPress: { [weak self] i in self?.handleCandidateLongPress(i) }))
+               onRangeEnter: { [weak self] i in self?.rangePressBegan(i) },
+               onRangeDrag: { [weak self] dx in self?.rangePressDragged(dx) },
+               onRangeEnded: { [weak self] in self?.rangePressEnded() }))
             host.view.backgroundColor = .clear
             addChild(host)
             view.addSubview(host.view)
@@ -1314,7 +1318,10 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         if !composer.isEmpty {
-            if composer.needsRefresh {
+            if composer.rangeMode {
+                // 範囲選択中は、帯の番号は範囲だけの候補の番号。そのまま渡す
+                commitCandidate(index)
+            } else if composer.needsRefresh {
                 candidateWork?.cancel()
                 guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
                 commitCandidate(fresh)
@@ -1334,9 +1341,11 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// 候補の長押し：その候補の先頭の文節だけを確定して、残りの読みは変換待ちのままにする。
-    /// 長い読みを打って変換が今ひとつのとき、単語ごとに切り出して変換していくための操作
-    private func handleCandidateLongPress(_ index: Int) {
+    /// 範囲選択を始めたときの範囲の長さ（ドラッグの移動量を文字数に変えるための起点）
+    private var rangeStartLength = 0
+
+    /// 候補の長押し：範囲選択に入る。最初の範囲は、その候補の先頭の文節
+    private func rangePressBegan(_ index: Int) {
         // パネル側の長押しで付いた選択抑制が、選択として届かなかった場合の後始末
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             if self?.panelModel.suppressSelect == index { self?.panelModel.suppressSelect = nil }
@@ -1348,17 +1357,26 @@ final class KeyboardViewController: UIInputViewController {
             guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
             index = fresh
         }
-        let reading = composer.reading
-        guard let text = composer.commitFirstClause(candidateAt: index) else { return }
-        keyboardView.resetFlickHistory()
-        insertCommitted(text)
-        if composer.isEmpty {
-            lastCommit = cursorInsidePair ? nil : (text, reading)
-            refreshBar()
-            schedulePredictions()
-        } else {
-            updateComposition()
+        guard composer.enterRangeMode(candidateAt: index) else { return }
+        rangeStartLength = composer.rangeLength
+        updateComposition()
+    }
+
+    /// 範囲選択のドラッグ：横の移動量ぶん、範囲を伸縮する。
+    /// ドラッグ中は帯を作り直さず、入力欄の選択表示だけを動かす（指を離したときに帯を出し直す）
+    private func rangePressDragged(_ dx: CGFloat) {
+        guard composer.rangeMode else { return }
+        // カーソル移動と同じく、2.2mmで1文字ぶん
+        let steps = Int((dx / (2.2 * CGFloat(KeyboardSettings.ptPerMM))).rounded())
+        if composer.setRangeLength(rangeStartLength + steps) {
+            showMarked(composer.markedText, highlight: composer.markedHighlight)
         }
+    }
+
+    /// 範囲選択の指を離した：範囲はそのままで、帯に範囲だけの候補を出す。候補を押すと範囲だけ確定する
+    private func rangePressEnded() {
+        guard composer.rangeMode else { return }
+        updateComposition()
     }
 
     private func commitCandidate(_ index: Int) {
