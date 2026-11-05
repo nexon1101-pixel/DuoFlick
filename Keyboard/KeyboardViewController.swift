@@ -1399,7 +1399,11 @@ final class KeyboardViewController: UIInputViewController {
             guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
             index = fresh
         }
-        guard composer.enterRangeMode(candidateAt: index) else { return }
+        guard composer.enterRangeMode(candidateAt: index) else {
+            traceRange("長押し: 範囲に入れなかった（候補番号=\(index) 空=\(composer.isEmpty) 文節選択中=\(composer.focusClause != nil)）")
+            return
+        }
+        traceRange("長押し: 範囲に入った（全体=\(composer.rangeLength)文字）")
         rangeStartLength = composer.rangeLength
         updateComposition()
     }
@@ -1411,6 +1415,7 @@ final class KeyboardViewController: UIInputViewController {
         // カーソル移動と同じく、2.2mmで1文字ぶん
         let steps = Int((dx / (2.2 * CGFloat(KeyboardSettings.ptPerMM))).rounded())
         if composer.setRangeLength(rangeStartLength + steps) {
+            traceRange("ドラッグ: 範囲=\(composer.rangeLength)文字")
             showMarked(composer.markedText, highlight: composer.markedHighlight)
             // どこまでが変換対象か、帯とパネルの読みラベルでも見せる
             candidateBar.setReadingLabel(composer.readingLabel)
@@ -1422,22 +1427,49 @@ final class KeyboardViewController: UIInputViewController {
     /// 範囲だけを変換中で残している間、範囲の後ろに未変換で確定してある読み
     private var soloRemainder: String?
 
+    /// 範囲選択の一連の動きの記録（v0.37.29 の切り分け用。「変換の診断」の末尾に出す）
+    private var rangeTrace: [String] = []
+    private func traceRange(_ s: String) {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss.SSS"
+        rangeTrace.append("\(f.string(from: Date())) \(s)")
+        if rangeTrace.count > 14 { rangeTrace.removeFirst(rangeTrace.count - 14) }
+    }
+    private func proxyContext(_ proxy: UITextDocumentProxy) -> String {
+        "前[\(proxy.documentContextBeforeInput ?? "nil")] 後[\(proxy.documentContextAfterInput ?? "nil")] hasText=\(proxy.hasText)"
+    }
+
     /// 範囲選択の指を離した：範囲はそのままで、帯に範囲だけの候補を出す。
     /// 範囲の後ろは未変換のまま一度確定して文書に入れ、入力欄では範囲だけが変換中（下線）で残るようにする
     private func rangePressEnded() {
-        guard composer.rangeMode else { return }
+        guard composer.rangeMode else {
+            traceRange("離す: 範囲モードでないため何もしない")
+            return
+        }
         updateComposition()
-        // v0.37.28: ライブ変換／Zenzai が有効だと丸ごと無効化していた条件を撤廃。
-        // ユーザーはライブ変換 ON で使うため、この条件がある限り実機では一生発動しなかった（2026-11-05 実機報告の原因）
+        // ライブ変換／Zenzai の設定に関わらず行う（v0.37.28 で条件を撤廃。今回の報告の原因ではない）
         let suffix = composer.rangeSuffixReading
-        guard !suffix.isEmpty else { return }
-        clearMarked()
+        traceRange("離す: 範囲=\(composer.rangeLength)文字 後ろ=[\(suffix)] markedActive=\(markedActive)")
+        guard !suffix.isEmpty else {
+            traceRange("離す: 後ろが空なのでソロ化しない")
+            return
+        }
         let proxy = textDocumentProxy
+        traceRange("掃除前: \(proxyContext(proxy))")
+        clearMarked()
+        traceRange("掃除後: \(proxyContext(proxy))")
         proxy.insertText(suffix)
+        traceRange("後ろを挿入後: \(proxyContext(proxy))")
         proxy.adjustTextPosition(byCharacterOffset: -(suffix as NSString).length)
+        traceRange("カーソルを戻した後: \(proxyContext(proxy))")
         soloRemainder = suffix
         let t = composer.rangeMarkedText
         showMarked(t, highlight: NSRange(location: 0, length: (t as NSString).length))
+        traceRange("範囲だけ表示後: \(proxyContext(proxy))")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self else { return }
+            self.traceRange("離して0.6秒後: \(self.proxyContext(self.textDocumentProxy)) solo=\(self.soloRemainder != nil) 範囲モード=\(self.composer.rangeMode)")
+        }
     }
 
     /// 範囲だけを変換中で残した状態を解く：確定してあった後ろの分を消し、読み全体の変換待ちに戻す
@@ -1464,6 +1496,7 @@ final class KeyboardViewController: UIInputViewController {
         // 続きとして変換待ちに戻す（composer 側は残りの読みを変換待ちとして持っている）
         if let s = soloRemainder {
             soloRemainder = nil
+            traceRange("候補で確定: ソロ解除、後ろ[\(s)]を消して変換待ちに戻す")
             let proxy = textDocumentProxy
             proxy.adjustTextPosition(byCharacterOffset: (s as NSString).length)
             for _ in 0..<s.count { proxy.deleteBackward() }
@@ -1723,7 +1756,11 @@ final class KeyboardViewController: UIInputViewController {
                 self.composer.zenzai = self.model.settings.zenzai
                 self.composer.zenzaiHigh = self.model.settings.zenzaiHigh
                 self.updateLeftContext()
-                return self.composer.diagnostics()
+                var d = self.composer.diagnostics()
+                if !self.rangeTrace.isEmpty {
+                    d += "\n— 範囲選択の記録（v0.37.29）—\n" + self.rangeTrace.joined(separator: "\n")
+                }
+                return d
             },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
             onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
