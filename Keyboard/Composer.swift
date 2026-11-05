@@ -762,6 +762,12 @@ final class Composer {
     /// 範囲の読み（先頭から rangeLength 文字）
     private var rangeReading: String { String(composing.convertTarget.prefix(rangeLength)) }
 
+    /// 範囲の後ろの読み（範囲選択の外側）
+    var rangeSuffixReading: String { String(composing.convertTarget.dropFirst(rangeLength)) }
+
+    /// 範囲だけを変換中で見せるときの形（候補を選んでいればその候補、なければ範囲の読み）
+    var rangeMarkedText: String { rangeShownPrefix }
+
     /// 範囲選択中に、入力欄の先頭に出す形（候補を選んでいればその候補、なければ範囲の読み）
     private var rangeShownPrefix: String {
         if let i = selectedIndex, i >= 0, i < rangeCandidates.count { return rangeCandidates[i].text }

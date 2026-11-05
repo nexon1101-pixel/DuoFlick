@@ -338,6 +338,21 @@ final class KeyboardViewController: UIInputViewController {
             }
             return
         }
+        // 範囲だけを変換中で残している間は、空白（候補の選択）以外のキーを、
+        // まず状態を解いて読み全体の変換待ちに戻してから処理する。⌫は解くこと自体で消費する
+        if soloRemainder != nil {
+            switch def.action {
+            case .space:
+                break
+            case .delete:
+                cancelSoloRange()
+                updateComposition()
+                return
+            default:
+                cancelSoloRange()
+                updateComposition()
+            }
+        }
         domainCandidates = []
         let expectedClose = pairClose
         pairClose = nil
@@ -894,6 +909,10 @@ final class KeyboardViewController: UIInputViewController {
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()
+        } else if soloRemainder != nil {
+            // 範囲だけを変換中で残している間は、入力欄には範囲だけを出す
+            let t = composer.rangeMarkedText
+            showMarked(t, highlight: NSRange(location: 0, length: (t as NSString).length))
         } else {
             showMarked(composer.markedText, highlight: composer.markedHighlight)
         }
@@ -1397,10 +1416,35 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// 範囲選択の指を離した：範囲はそのままで、帯に範囲だけの候補を出す。候補を押すと範囲だけ確定する
+    /// 範囲だけを変換中で残している間、範囲の後ろに未変換で確定してある読み
+    private var soloRemainder: String?
+
+    /// 範囲選択の指を離した：範囲はそのままで、帯に範囲だけの候補を出す。
+    /// 範囲の後ろは未変換のまま一度確定して文書に入れ、入力欄では範囲だけが変換中（下線）で残るようにする
     private func rangePressEnded() {
         guard composer.rangeMode else { return }
         updateComposition()
+        // ライブ変換系では表示の仕組みが違うので、この形にはしない
+        guard !model.settings.liveConversion, !model.settings.zenzai else { return }
+        let suffix = composer.rangeSuffixReading
+        guard !suffix.isEmpty else { return }
+        clearMarked()
+        let proxy = textDocumentProxy
+        proxy.insertText(suffix)
+        proxy.adjustTextPosition(byCharacterOffset: -(suffix as NSString).length)
+        soloRemainder = suffix
+        let t = composer.rangeMarkedText
+        showMarked(t, highlight: NSRange(location: 0, length: (t as NSString).length))
+    }
+
+    /// 範囲だけを変換中で残した状態を解く：確定してあった後ろの分を消し、読み全体の変換待ちに戻す
+    private func cancelSoloRange() {
+        guard let s = soloRemainder else { return }
+        soloRemainder = nil
+        clearMarked()
+        let proxy = textDocumentProxy
+        proxy.adjustTextPosition(byCharacterOffset: (s as NSString).length)
+        for _ in 0..<s.count { proxy.deleteBackward() }
     }
 
     private func commitCandidate(_ index: Int) {
@@ -1413,6 +1457,14 @@ final class KeyboardViewController: UIInputViewController {
         guard let text = composer.commit(candidateAt: index) else { return }
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
         insertCommitted(text)
+        // 範囲だけを変換中で残していた場合は、後ろに未変換で確定してあった分を文書から消し、
+        // 続きとして変換待ちに戻す（composer 側は残りの読みを変換待ちとして持っている）
+        if let s = soloRemainder {
+            soloRemainder = nil
+            let proxy = textDocumentProxy
+            proxy.adjustTextPosition(byCharacterOffset: (s as NSString).length)
+            for _ in 0..<s.count { proxy.deleteBackward() }
+        }
         if composer.isEmpty {
             lastCommit = cursorInsidePair ? nil : (text, reading)   // カーソルが括弧の中にあると取り消せないので覚えない
             refreshBar()
