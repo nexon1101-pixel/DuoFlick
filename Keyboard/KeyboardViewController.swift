@@ -32,9 +32,9 @@ final class KeyboardViewController: UIInputViewController {
     private var keyboardTop: NSLayoutConstraint?
     private lazy var barHeight = candidateBar.heightAnchor.constraint(equalToConstant: CandidateBar.height)
 
-    /// 候補の帯の高さ。ライブ変換のときと、範囲選択中（範囲の読みを出す）は、読みを出す余白のぶんだけ高くする
+    /// 候補の帯の高さ。読みを出すとき（ライブ変換・範囲選択・変換選択中）は、読みの余白のぶんだけ高くする
     private func updateBarHeight() {
-        let margin = (model.settings.liveConversion || composer.rangeMode) ? CandidateBar.readingMargin : 0
+        let margin = (model.settings.liveConversion || composer.rangeMode || composer.readingLabel != nil) ? CandidateBar.readingMargin : 0
         let h = CandidateBar.height + margin
         if barHeight.constant != h { barHeight.constant = h }
         candidateBar.topMargin = margin
@@ -961,9 +961,10 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 入力中は変換候補、確定直後は予測、それ以外は何も出さない
     private func refreshBar() {
-        // 範囲選択の入り・出で、読みラベルの余白が要るかどうかが変わる
-        if composer.rangeMode != lastRangeMode {
-            lastRangeMode = composer.rangeMode
+        // 読みラベルを出すかどうかが変わったら、帯の余白を付け替える
+        let showsReading = model.settings.liveConversion || composer.rangeMode || composer.readingLabel != nil
+        if showsReading != lastShowsReading {
+            lastShowsReading = showsReading
             updateBarHeight()
         }
         updateKeyLabels()
@@ -1382,8 +1383,8 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 範囲選択を始めたときの範囲の長さ（ドラッグの移動量を文字数に変えるための起点）
     private var rangeStartLength = 0
-    /// 前回の範囲選択の状態（帯の高さを切り替えるため）
-    private var lastRangeMode = false
+    /// 前回、帯に読みを出していたか（帯の高さを切り替えるため）
+    private var lastShowsReading = false
 
     /// 候補の長押し：範囲選択に入る。最初の範囲は、その候補の先頭の文節
     private func rangePressBegan(_ index: Int) {
