@@ -1427,13 +1427,19 @@ final class KeyboardViewController: UIInputViewController {
     /// 範囲だけを変換中で残している間、範囲の後ろに未変換で確定してある読み
     private var soloRemainder: String?
 
-    /// 範囲選択の一連の動きの記録（v0.37.29 の切り分け用。「変換の診断」の末尾に出す）
-    private var rangeTrace: [String] = []
+    /// 範囲選択の一連の動きの記録（切り分け用。「変換の診断」の末尾に出す）。
+    /// v0.37.30: メモリだけだとキーボードのプロセスが再起動したときに消えるので、共有の保存先に残す
+    private static let rangeTraceKey = "DuoFlick.rangeTrace"
     private func traceRange(_ s: String) {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
-        rangeTrace.append("\(f.string(from: Date())) \(s)")
-        if rangeTrace.count > 14 { rangeTrace.removeFirst(rangeTrace.count - 14) }
+        var lines = SharedStore.defaults.stringArray(forKey: Self.rangeTraceKey) ?? []
+        lines.append("\(f.string(from: Date())) \(s)")
+        if lines.count > 40 { lines.removeFirst(lines.count - 40) }
+        SharedStore.defaults.set(lines, forKey: Self.rangeTraceKey)
+    }
+    private var savedRangeTrace: [String] {
+        SharedStore.defaults.stringArray(forKey: Self.rangeTraceKey) ?? []
     }
     private func proxyContext(_ proxy: UITextDocumentProxy) -> String {
         "前[\(proxy.documentContextBeforeInput ?? "nil")] 後[\(proxy.documentContextAfterInput ?? "nil")] hasText=\(proxy.hasText)"
@@ -1757,9 +1763,8 @@ final class KeyboardViewController: UIInputViewController {
                 self.composer.zenzaiHigh = self.model.settings.zenzaiHigh
                 self.updateLeftContext()
                 var d = self.composer.diagnostics()
-                if !self.rangeTrace.isEmpty {
-                    d += "\n— 範囲選択の記録（v0.37.29）—\n" + self.rangeTrace.joined(separator: "\n")
-                }
+                let lines = self.savedRangeTrace
+                d += "\n— 範囲選択の記録 —\n" + (lines.isEmpty ? "（まだ記録なし）" : lines.joined(separator: "\n"))
                 return d
             },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
