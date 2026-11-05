@@ -16,6 +16,7 @@ iPhone Duo（折りたたみ）の外側画面（5.4インチ）で打ちやす�
 ## 作り方と入れ方
 
 - リポジトリ：https://github.com/nexon1101-pixel/DuoFlick （main に直接 push）
+- push 方式（2026-11-05 変更）：GitHub コネクタの push-files は使わない（承認カードが毎回出るため）。ローカルで git add / git commit して `git push origin main` で直接 push する。origin は SSH（git@github.com:…）で、core.sshCommand 設定済み。push-paths ファイルと snapshot-sync 記録も廃止
 - ビルド：GitHub Actions（macos-15、Xcode 16.4）で XcodeGen → 署名なしでビルド → ipa を作る
   - 開始：`gh api -X POST repos/nexon1101-pixel/DuoFlick/actions/workflows/build.yml/dispatches -f ref=main`
   - ipa は Python の zipfile で作る（UTF-8 のファイル名。これをしないと辞書の日本語ファイル名が化けて漢字変換が出なくなった）
