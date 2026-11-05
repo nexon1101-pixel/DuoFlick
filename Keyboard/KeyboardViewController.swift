@@ -234,6 +234,13 @@ final class KeyboardViewController: UIInputViewController {
             let proxy = self.textDocumentProxy
             let before = proxy.documentContextBeforeInput ?? ""
             let after = proxy.documentContextAfterInput ?? ""
+            // 範囲選択の最中（候補を長押ししている間）は、アプリ側の文脈報告が一瞬揺れても
+            // 変換待ちを捨てない。実機の記録で、約3秒のホールド中にこの見張りが誤発して
+            // 範囲モードごと消えた回があった（2026-11-05 13:45 の記録、v0.37.32）
+            if self.composer.rangeMode {
+                self.scheduleEmptyCheck(after: 0.6)
+                return
+            }
             // 変換待ちのまま送信されたとき：アプリが下線付きの文字ごと入力欄を空にしている。読みと候補を捨てる
             if !self.composer.isEmpty {
                 if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty, !proxy.hasText {
@@ -359,12 +366,8 @@ final class KeyboardViewController: UIInputViewController {
         domainCandidates = []
         let expectedClose = pairClose
         pairClose = nil
-        // 変換待ち（読みに下線が出ている間）は、ABC・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
-        if composingLocked {
-            if !isAllowedWhileComposing(def) { return }
-            // 地球儀はタップ（確定してから切り替え）だけ通し、フリック（設定・履歴・定型文）は変換中は止める（v0.37.31）
-            if case .nextKeyboard = def.action, dir != .tap { return }
-        }
+        // 変換待ち（読みに下線が出ている間）は、ABC・地球儀・片手／両手などの、入力を中断するキーが押せない（設定でオフにできる）
+        if composingLocked, !isAllowedWhileComposing(def) { return }
         let proxy = textDocumentProxy
         // ⌫の下フリック：確定の取り消し（↺）
         if case .delete = def.action, dir == .down {
@@ -669,13 +672,12 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// 変換待ちの間に止めるキー：入力を中断してしまう、ABC・片手／両手・設定・記号面・貼り付けなどのキー。
+    /// 変換待ちの間に止めるキー：入力を中断してしまう、ABC・地球儀・片手／両手・設定・記号面・貼り付けなどのキー。
     /// かな・数字・⌫・空白（次候補）・改行（確定）・小゛゜など、読みを打ち続けるキーは止めない。
-    /// 地球儀は止めない：タップの処理側が「確定してから切り替え」になっていて安全なため（v0.37.31）。
-    /// ただし地球儀のフリック（設定・履歴・定型文）は変換中は handle 側で止める
+    /// 地球儀も止める（誤タップ防止というユーザーの意図。v0.37.31 で一度外したが、本人の指示で v0.37.32 で戻した）
     private func isAllowedWhileComposing(_ def: KeyDef) -> Bool {
         switch def.action {
-        case .modeSwitch, .gripSwitch, .settings, .layer, .paste, .widthToggle, .splitKeys: return false
+        case .modeSwitch, .nextKeyboard, .gripSwitch, .settings, .layer, .paste, .widthToggle, .splitKeys: return false
         default: return true
         }
     }
@@ -1222,8 +1224,10 @@ final class KeyboardViewController: UIInputViewController {
                 v.backgroundColor = .clear
                 let pill = UIView()
                 pill.backgroundColor = UIColor.systemGray.withAlphaComponent(0.55)
-                pill.layer.cornerRadius = 2.5
-                pill.frame = CGRect(x: 62, y: 10.5, width: 36, height: 5)
+                pill.layer.cornerRadius = 2
+                // 通常の帯のつまみ（上端から3pt・高さ4）と高さを揃える。以前は 2+10.5=12.5pt で、
+                // 配置が変わるとつまみの高さが違って見えた（2026-11-05 実機指摘）
+                pill.frame = CGRect(x: 62, y: 1, width: 36, height: 4)
                 pill.isUserInteractionEnabled = false
                 v.addSubview(pill)
                 v.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(middleGrabberPanned(_:))))
