@@ -121,6 +121,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.onCursor = { [weak self] steps in self?.cursorDrag(steps) }
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
+        candidateBar.onLongPress = { [weak self] i in self?.handleCandidateLongPress(i) }
         candidateBar.onReading = { [weak self] in self?.commitReadingAsIs() }
         candidateBar.onExpand = { [weak self] in self?.toggleCandidateList() }
         candidateBar.onSwipeDown = { [weak self] in
@@ -1022,6 +1023,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.isHidden = true
         middleHost?.view.isHidden = true
         setMiddleGrabberVisible(false)
+        updateFanDockButton()
         candidateBar.setExpand(visible: true, expanded: true)
     }
 
@@ -1041,6 +1043,7 @@ final class KeyboardViewController: UIInputViewController {
         middleHost?.view.isHidden = false
         middleHost?.view.alpha = 0
         if lastPanelRect != nil { setMiddleGrabberVisible(true) }
+        updateFanDockButton()
         let canExpand = !composer.isEmpty && !composer.candidateTexts.isEmpty
         candidateBar.setExpand(visible: canExpand, expanded: false)
         UIView.animate(withDuration: 0.14, delay: 0, options: [.curveEaseIn, .allowUserInteraction], animations: {
@@ -1122,6 +1125,40 @@ final class KeyboardViewController: UIInputViewController {
         if panelModel.reading != readingText { panelModel.reading = readingText }
     }
 
+    /// 扇形のとき、端にうっすら出す「寄せる側を変える」ボタン
+    private var fanDockButton: UIButton?
+
+    /// 扇形の寄せボタンの表示と位置を、いまの状態に合わせる
+    private func updateFanDockButton() {
+        let s = model.settings
+        let show = mode == .kana && model.grip == .one && s.shape == .fan
+            && !KeyboardLayout.usesIOS(s, mode, model.grip, view.bounds.width)
+            && !isCandidateListOpen && topHost == nil && panelHost == nil
+        guard show else { fanDockButton?.isHidden = true; return }
+        if fanDockButton == nil {
+            let b = UIButton(type: .system)
+            b.tintColor = UIColor.white.withAlphaComponent(0.35)
+            b.addTarget(self, action: #selector(fanDockTapped), for: .touchUpInside)
+            view.addSubview(b)
+            fanDockButton = b
+        }
+        guard let b = fanDockButton else { return }
+        b.isHidden = false
+        // いま寄っている側と反対の端に、行き先の向きの矢印を出す
+        let dockedLeft = (s.hand == .left) != s.fanDockFlip
+        b.setImage(UIImage(systemName: dockedLeft ? "chevron.right" : "chevron.left"), for: .normal)
+        let w: CGFloat = 30, h: CGFloat = 72
+        b.frame = CGRect(x: dockedLeft ? view.bounds.width - w : 0,
+                         y: (view.bounds.height - h) / 2 + 16, width: w, height: h)
+        view.bringSubviewToFront(b)
+    }
+
+    @objc private func fanDockTapped() {
+        var s = model.settings
+        s.fanDockFlip.toggle()
+        model.settings = s
+    }
+
     /// 真ん中の候補パネルを出す範囲（レイアウトのたびに合わせ直すために覚えておく）
     private var lastPanelRect: CGRect?
 
@@ -1177,6 +1214,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         layoutMiddleGrabber()
         if let v = middleGrabber, !v.isHidden { view.bringSubviewToFront(v) }
+        updateFanDockButton()
     }
 
     private func updateMiddlePanel(_ rect: CGRect?) {
@@ -1194,12 +1232,16 @@ final class KeyboardViewController: UIInputViewController {
         setMiddleGrabberVisible(!isCandidateListOpen)
         if middleHost == nil {
             let host = UIHostingController(rootView: MiddlePanel(model: panelModel, onSelect: { [weak self] i in
-                self?.selectFromBar(i)
+                guard let self else { return }
+                // 長押しが成立した項目の、その直後の通常選択は飲み込む
+                if self.panelModel.suppressSelect == i { self.panelModel.suppressSelect = nil; return }
+                self.selectFromBar(i)
             }, onSwipeDown: { [weak self] in
                 // 真ん中を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
                 self?.commitAll()
                 self?.dismissKeyboard()
-            }, onReading: { [weak self] in self?.commitReadingAsIs() }))
+            }, onReading: { [weak self] in self?.commitReadingAsIs() },
+               onLongPress: { [weak self] i in self?.handleCandidateLongPress(i) }))
             host.view.backgroundColor = .clear
             addChild(host)
             view.addSubview(host.view)
@@ -1289,6 +1331,33 @@ final class KeyboardViewController: UIInputViewController {
             lastCommit = nil
             refreshBar()
             schedulePredictions()
+        }
+    }
+
+    /// 候補の長押し：その候補の先頭の文節だけを確定して、残りの読みは変換待ちのままにする。
+    /// 長い読みを打って変換が今ひとつのとき、単語ごとに切り出して変換していくための操作
+    private func handleCandidateLongPress(_ index: Int) {
+        // パネル側の長押しで付いた選択抑制が、選択として届かなかった場合の後始末
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            if self?.panelModel.suppressSelect == index { self?.panelModel.suppressSelect = nil }
+        }
+        guard !composer.isEmpty, composer.focusClause == nil else { return }
+        var index = index
+        if composer.needsRefresh {
+            candidateWork?.cancel()
+            guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
+            index = fresh
+        }
+        let reading = composer.reading
+        guard let text = composer.commitFirstClause(candidateAt: index) else { return }
+        keyboardView.resetFlickHistory()
+        insertCommitted(text)
+        if composer.isEmpty {
+            lastCommit = cursorInsidePair ? nil : (text, reading)
+            refreshBar()
+            schedulePredictions()
+        } else {
+            updateComposition()
         }
     }
 

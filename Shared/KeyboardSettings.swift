@@ -67,6 +67,8 @@ struct KeyboardSettings: Codable, Equatable {
     var iosLayout: Bool = true
     /// 空白キー長押しのカーソル移動の速さ（倍率）
     var cursorSpeed: Double = 1.0
+    /// 扇形のとき、寄せる側を「手」の設定から反転させる（キーボードの端のボタンで切り替える）
+    var fanDockFlip: Bool = false
 
     init(shape: KeyboardShape = .standard) {
         self.shape = shape
@@ -105,6 +107,7 @@ struct KeyboardSettings: Codable, Equatable {
         splitKana = (try? c.decode(Bool.self, forKey: .splitKana)) ?? d.splitKana
         iosLayout = (try? c.decode(Bool.self, forKey: .iosLayout)) ?? d.iosLayout
         cursorSpeed = (try? c.decode(Double.self, forKey: .cursorSpeed)) ?? d.cursorSpeed
+        fanDockFlip = (try? c.decode(Bool.self, forKey: .fanDockFlip)) ?? d.fanDockFlip
     }
 
     /// iPhoneの1ポイントはおよそ0.16mm。機種ごとの差は小さいので固定値で扱う。

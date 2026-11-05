@@ -723,6 +723,36 @@ final class Composer {
         return c.text
     }
 
+    /// 候補の先頭の文節だけを確定し、残りの読みは変換待ちのまま残す（候補の長押し用）。
+    /// 長い読みで変換が今ひとつのとき、単語ごとに切り出して変換していくためのもの。
+    /// 先頭の文節が候補全体と同じときは、通常の確定と同じになる
+    func commitFirstClause(candidateAt index: Int) -> String? {
+        guard focusClause == nil, index < displayCount else { return nil }
+        guard let ci = candidateIndex(forDisplay: index) else { return nil }
+        let c = candidates[ci]
+        let first = Candidate.makePrefixClauseCandidate(data: c.data[...])
+        guard !first.data.isEmpty, first.data.count < c.data.count else {
+            return commit(candidateAt: index)
+        }
+        composing.prefixComplete(composingCount: first.composingCount)
+        selectedIndex = nil
+        converter.updateLearningData(first)
+        remember(first)
+        scheduleSave()
+        if composing.isEmpty {
+            converter.stopComposition()
+            candidates = []
+            startPredictions(after: first)
+        } else {
+            rawValid = false
+            converter.setCompletedData(first)
+            // 残りの読みは区切りなしで変換し直す
+            _ = composing.moveCursorFromCursorPosition(count: composing.convertTarget.count)
+            refresh()
+        }
+        return first.text
+    }
+
     /// 選んでいる候補（なければひらがな）で全部確定する
     func commitAll() -> String {
         if readingMode {

@@ -14,6 +14,10 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     }
 
     var onSelect: ((Int) -> Void)?
+    /// 候補を長押ししたとき（先頭の文節だけ確定する）
+    var onLongPress: ((Int) -> Void)?
+    /// 長押しが成立したボタン。その直後のタップ（指を離したときの通常選択）は飲み込む
+    private var longPressedTag: Int?
     /// 左上の読み（ひらがな）を押したとき
     var onReading: (() -> Void)?
     /// 右端の∨／∧ボタン（候補の一覧を開く・閉じる）
@@ -192,6 +196,9 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
             b.setContentCompressionResistancePriority(.required, for: .horizontal)
             b.setContentHuggingPriority(.required, for: .horizontal)
             b.addTarget(self, action: #selector(tapped(_:)), for: .touchUpInside)
+            let lp = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+            lp.minimumPressDuration = 0.4
+            b.addGestureRecognizer(lp)
             stack.addArrangedSubview(b)
         }
         // 候補が出始めるときは、上から下へスライドして出す
@@ -232,6 +239,13 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func tapped(_ b: UIButton) {
+        if longPressedTag == b.tag { longPressedTag = nil; return }
         onSelect?(b.tag)
+    }
+
+    @objc private func longPressed(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began, let b = g.view as? UIButton else { return }
+        longPressedTag = b.tag
+        onLongPress?(b.tag)
     }
 }

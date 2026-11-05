@@ -314,9 +314,11 @@ enum KeyboardLayout {
         let m: CGFloat = mm(s.marginMM)
         let topPad: CGFloat = mm(1.5) + topInset
         let dx: CGFloat
+        // 扇形のときは、端のボタンで寄せる側を反転できる（キーの並びや扇の向きは変えず、寄せる側だけ）
+        let dockLeft = isLeftHand(s) != (s.shape == .fan && s.fanDockFlip)
         if centered {
             dx = (W - b.width) / 2 - b.minX
-        } else if isLeftHand(s) {
+        } else if dockLeft {
             dx = m - b.minX
         } else {
             dx = W - m - b.maxX

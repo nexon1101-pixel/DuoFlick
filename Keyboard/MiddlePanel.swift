@@ -6,6 +6,8 @@ final class PanelModel: ObservableObject {
     @Published var selected: Int?
     /// ライブ変換で、打った読みを小さく出す
     @Published var reading: String = ""
+    /// 長押しが成立した項目番号。その直後の通常選択は1回だけ飲み込む
+    var suppressSelect: Int?
 }
 
 struct MiddlePanel: View {
@@ -13,6 +15,7 @@ struct MiddlePanel: View {
     let onSelect: (Int) -> Void
     var onSwipeDown: (() -> Void)? = nil
     var onReading: (() -> Void)? = nil
+    var onLongPress: ((Int) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,6 +66,10 @@ struct MiddlePanel: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .onLongPressGesture(minimumDuration: 0.4) {
+                model.suppressSelect = i
+                onLongPress?(i)
+            }
             .overlay(alignment: .bottom) {
                 Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 0.5)
             }

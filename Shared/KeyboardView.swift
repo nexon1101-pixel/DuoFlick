@@ -105,7 +105,9 @@ final class KeyboardView: UIView {
     }
     /// 実際に空ける高さ。iOS標準の配置のときは候補の帯を出さないので、上の段のフリックのガイドがはみ出せる透明な余白にする
     private func inset(for width: CGFloat) -> CGFloat {
-        KeyboardLayout.usesIOS(settings, mode, grip, width) ? KeyboardLayout.mm(settings.keyHeightMM) * 0.9 : topInset
+        // 上の帯の高さは、全モードで候補の帯と同じ高さに揃える
+        // （iOS標準の配置だけキー高さの0.9倍になっていて、帯の高さがモードで揃っていなかった）
+        topInset
     }
     weak var guideView: GuideOverlayView?
     /// 空白キー長押し中の左右移動。負の値で左へ。
