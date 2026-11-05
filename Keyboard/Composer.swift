@@ -211,9 +211,9 @@ final class Composer {
     /// 選び直している文節を、入力欄の下線の文字の中で選択して見せる範囲
     var markedHighlight: NSRange? {
         if rangeMode {
-            // 範囲選択：先頭から範囲ぶんを選択状態に見せる
+            // 範囲選択：先頭から範囲ぶんを選択状態に見せる（アプリが描く場合の補助）
             if liveUsable { return NSRange(location: 0, length: ((rangeCandidates.first?.text ?? rangeReading) as NSString).length) }
-            return NSRange(location: 0, length: (rangeReading as NSString).length)
+            return NSRange(location: 0, length: (rangeShownPrefix as NSString).length)
         }
         guard let k = focusClause, liveUsable, k < liveClauses.count else { return nil }
         let before = liveClauses[..<k].map(\.shown).joined()
@@ -299,6 +299,11 @@ final class Composer {
     /// 入力欄に下線付きで表示する文字
     var markedText: String {
         if readingMode { return composing.convertTarget }
+        if rangeMode, !liveUsable {
+            // 範囲だけを読みのまま（＝変換中）で見せ、後ろは仮で変換した形にする。
+            // 選択範囲の描画はアプリ次第で当てにならないので、文字そのもので対象を示す
+            return rangeShownPrefix + rangeRemainderText
+        }
         if focusClause == nil, let i = selectedIndex, i < displayCount {
             if let ci = candidateIndex(forDisplay: i) {
                 return candidates[ci].text + readingAfterSegment
@@ -751,9 +756,17 @@ final class Composer {
     private(set) var rangeLength = 0
     /// 範囲だけの候補
     private var rangeCandidates: [Candidate] = []
+    /// 範囲の後ろの読みを、仮で変換した形（入力欄で「範囲だけが変換中」と見せるため）
+    private var rangeRemainderText = ""
 
     /// 範囲の読み（先頭から rangeLength 文字）
     private var rangeReading: String { String(composing.convertTarget.prefix(rangeLength)) }
+
+    /// 範囲選択中に、入力欄の先頭に出す形（候補を選んでいればその候補、なければ範囲の読み）
+    private var rangeShownPrefix: String {
+        if let i = selectedIndex, i >= 0, i < rangeCandidates.count { return rangeCandidates[i].text }
+        return rangeReading
+    }
 
     /// 候補の長押しで範囲選択に入る。最初の範囲は読み全体で、先頭を固定したまま
     /// ドラッグ（前にスクロール）で末尾から狭めていく
@@ -783,6 +796,7 @@ final class Composer {
         rangeMode = false
         rangeLength = 0
         rangeCandidates = []
+        rangeRemainderText = ""
     }
 
     /// 範囲の読みだけを変換して、候補を集める（文節の候補を集めるのと同じやり方）
@@ -807,6 +821,9 @@ final class Composer {
         }
         rangeCandidates = list
         selectedIndex = nil
+        // 範囲の後ろは、仮で変換した形にしておく（入力欄の表示で使う。確定はしていない）
+        let rest = String(composing.convertTarget.dropFirst(rangeLength))
+        rangeRemainderText = rest.isEmpty ? "" : (bestExact(rest)?.text ?? rest)
     }
 
     /// 範囲選択で候補を選ぶ：範囲だけを確定し、残りの読みは変換待ちのまま残す
