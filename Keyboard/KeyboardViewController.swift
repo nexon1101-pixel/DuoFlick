@@ -117,6 +117,9 @@ final class KeyboardViewController: UIInputViewController {
             self.haptic.impactOccurred()
         }
         keyboardView.onSpaceHold = { [weak self] in self?.spaceHold() }
+        keyboardView.onSpaceRangeBegan = { [weak self] in self?.spaceRangeBegan() ?? false }
+        keyboardView.onSpaceRangeDragged = { [weak self] dx in self?.rangePressDragged(dx) }
+        keyboardView.onSpaceRangeEnded = { [weak self] in self?.rangePressEnded() }
         keyboardView.onCursor = { [weak self] steps in self?.cursorDrag(steps) }
         keyboardView.onCursorVertical = { [weak self] lines in self?.moveCursorVertically(lines) }
         candidateBar.onSelect = { [weak self] i in self?.selectFromBar(i) }
@@ -794,10 +797,28 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 空白キー長押しの左右：入力中なら文節の区切りを動かし、そうでなければカーソルを動かす
     /// 空白キーを長押しして動かさずに離したとき：変換中なら、ひらがなのまま見せる（改行で確定）
+    /// ※変換中の長押しは範囲選択に差し替わるため（spaceRangeBegan）、ここに来るのは差し替えが
+    /// 成立しなかった場合（文節の選び直し中など）だけ
     private func spaceHold() {
         guard register == nil, !composer.isEmpty else { return }
         composer.showReadingOnly()
         updateComposition()
+    }
+
+    /// 次候補（空白）長押しの差し替え：変換中なら範囲選択に入り、true を返す。
+    /// 変換中以外・登録画面・文節の選び直し中は false を返し、従来のトラックパッドのままにする
+    private func spaceRangeBegan() -> Bool {
+        guard register == nil, !composer.isEmpty, composer.focusClause == nil else { return false }
+        if composer.rangeMode {
+            // すでに入っているときは、いまの範囲の長さから伸縮を始める
+            rangeStartLength = composer.rangeLength
+            return true
+        }
+        guard composer.enterRangeMode(candidateAt: 0) else { return false }
+        traceRange("次候補長押し: 範囲に入った（全体=\(composer.rangeLength)文字）")
+        rangeStartLength = composer.rangeLength
+        updateComposition()
+        return true
     }
 
     private func cursorDrag(_ steps: Int) {

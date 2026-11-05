@@ -116,6 +116,12 @@ final class KeyboardView: UIView {
     var onCursorVertical: ((Int) -> Void)?
     /// 空白キーを長押しして、動かさずに離したとき（変換中は、ひらがなにする）
     var onSpaceHold: (() -> Void)?
+    /// 空白キー長押しが始まったとき。変換中は true が返り、その長押しは範囲選択に差し替わる
+    var onSpaceRangeBegan: (() -> Bool)?
+    /// 範囲選択に差し替わった空白ドラッグ（始点からの横の移動量）
+    var onSpaceRangeDragged: ((CGFloat) -> Void)?
+    /// 範囲選択に差し替わった空白長押しを離したとき
+    var onSpaceRangeEnded: (() -> Void)?
 
     private(set) var keys: [LaidKey] = []
     private var keysBottom: CGFloat = 0
@@ -132,6 +138,8 @@ final class KeyboardView: UIView {
         var timer: Timer?
         var repeated = false
         var cursorMode = false
+        /// 空白長押しが範囲選択に差し替わったか
+        var rangeHold = false
         /// トラックパッド操作で、カーソルを動かしたか
         var trackMoved = false
         /// 改行・確定キーの上に指が来た時刻（少し止めたときだけキャンセルにする）
@@ -771,8 +779,13 @@ final class KeyboardView: UIView {
                 a.timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self, weak a] _ in
                     guard let self, let a else { return }
                     a.cursorMode = true
-                    self.beginTrackpad(a, at: a.current, time: ProcessInfo.processInfo.systemUptime)
-                    self.startCursorEdgeRepeat(a)
+                    // 変換中は範囲選択に差し替える（VC が true を返したときだけ）
+                    if self.onSpaceRangeBegan?() == true {
+                        a.rangeHold = true
+                    } else {
+                        self.beginTrackpad(a, at: a.current, time: ProcessInfo.processInfo.systemUptime)
+                        self.startCursorEdgeRepeat(a)
+                    }
                     self.setNeedsDisplay()
                 }
             }
@@ -883,8 +896,13 @@ final class KeyboardView: UIView {
                 if abs(p.x - a.start.x) > stepPt * 1.5 {
                     a.timer?.invalidate()
                     a.cursorMode = true
-                    beginTrackpad(a, at: p, time: t.timestamp)
-                    startCursorEdgeRepeat(a)
+                    // 変換中は範囲選択に差し替える（VC が true を返したときだけ）
+                    if onSpaceRangeBegan?() == true {
+                        a.rangeHold = true
+                    } else {
+                        beginTrackpad(a, at: p, time: t.timestamp)
+                        startCursorEdgeRepeat(a)
+                    }
                 }
             }
             if a.key.def.isDelete, !a.repeated {
@@ -898,7 +916,11 @@ final class KeyboardView: UIView {
                     trackDeleteFlickRepeat(a, .tap)
                 }
             }
-            if a.cursorMode { moveTrackpad(a, to: p, time: t.timestamp) }
+            if a.rangeHold {
+                onSpaceRangeDragged?(p.x - a.start.x)
+            } else if a.cursorMode {
+                moveTrackpad(a, to: p, time: t.timestamp)
+            }
         }
         setNeedsDisplay()
     }
@@ -954,7 +976,9 @@ final class KeyboardView: UIView {
                 onKey?(KeyDef(id: "digit" + digit, label: digit, action: .direct([digit, "", "", "", ""])), .tap)
                 continue
             }
-            if a.cursorMode, !a.trackMoved, case .space = a.key.def.action {
+            if a.rangeHold, case .space = a.key.def.action {
+                onSpaceRangeEnded?()
+            } else if a.cursorMode, !a.trackMoved, case .space = a.key.def.action {
                 onSpaceHold?()
             }
             if !a.repeated && !a.flickFired && !a.cursorMode {
