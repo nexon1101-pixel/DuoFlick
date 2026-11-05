@@ -912,11 +912,6 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
     private func updateComposition() {
-        // ソロ中にアプリが下線を平らにしていたら、下線の差し替えが本文に混ざる前に範囲を解く
-        if soloRemainder != nil, soloFlattened() {
-            fallbackSoloFlattened()
-            return
-        }
         composer.typoCorrection = model.settings.typoCorrection
         composer.liveConversion = model.settings.liveConversion
         composer.zenzai = model.settings.zenzai
@@ -1439,7 +1434,7 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// 範囲だけを変換中で残している間、範囲の後ろに未変換で確定してある読み
+    /// 範囲だけを変換中で残している間、範囲の後ろの読み（文書には入れず、キーボード側で覚えている。v0.37.34〜）
     private var soloRemainder: String?
 
     /// 範囲選択の一連の動きの記録（切り分け用。「変換の診断」の末尾に出す）。
@@ -1470,70 +1465,31 @@ final class KeyboardViewController: UIInputViewController {
         updateComposition()
         // ライブ変換／Zenzai の設定に関わらず行う（v0.37.28 で条件を撤廃。今回の報告の原因ではない）
         let suffix = composer.rangeSuffixReading
-        traceRange("離す: 範囲=\(composer.rangeLength)文字 後ろ=[\(suffix)] markedActive=\(markedActive)")
         guard !suffix.isEmpty else {
             traceRange("離す: 後ろが空なのでソロ化しない")
             return
         }
-        let proxy = textDocumentProxy
-        traceRange("掃除前: \(proxyContext(proxy))")
-        clearMarked()
-        traceRange("掃除後: \(proxyContext(proxy))")
-        proxy.insertText(suffix)
-        traceRange("後ろを挿入後: \(proxyContext(proxy))")
-        proxy.adjustTextPosition(byCharacterOffset: -(suffix as NSString).length)
-        traceRange("カーソルを戻した後: \(proxyContext(proxy))")
+        // 後ろの分は文書に入れず、キーボード側で覚えるだけにする（v0.37.34）。
+        // 文書への操作は下線の付け替えだけ＝ふだんの変換と同じ動きなので、下線表示を
+        // 平らにするアプリでも本文が壊れない（v0.37.26〜33 の文書手術は廃止）
         soloRemainder = suffix
-        let t = composer.rangeMarkedText
-        showMarked(t, highlight: NSRange(location: 0, length: (t as NSString).length))
-        traceRange("範囲だけ表示後: \(proxyContext(proxy))")
+        traceRange("離す: 範囲=\(composer.rangeLength)文字 後ろ=[\(suffix)]（キーボード側で保持）")
+        updateComposition()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self else { return }
             self.traceRange("離して0.6秒後: \(self.proxyContext(self.textDocumentProxy)) solo=\(self.soloRemainder != nil) 範囲モード=\(self.composer.rangeMode)")
         }
-        // アプリが下線を平らにする場合は早めに検出して範囲を解く（この後の⌫や確定で本文が壊れるのを防ぐ）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-            guard let self, self.soloRemainder != nil, self.soloFlattened() else { return }
-            self.fallbackSoloFlattened()
-        }
     }
 
-    /// 範囲だけを変換中で残した状態を解く：確定してあった後ろの分を消し、読み全体の変換待ちに戻す
+    /// 範囲だけを変換中で残した状態を解く：後ろの分はキーボード側で覚えているだけなので、
+    /// 範囲をやめて読み全体の変換待ちに戻すだけでよい（文書への操作は下線の付け替えだけ）
     private func cancelSoloRange() {
-        guard let s = soloRemainder else { return }
-        soloRemainder = nil
-        clearMarked()
-        let proxy = textDocumentProxy
-        proxy.adjustTextPosition(byCharacterOffset: (s as NSString).length)
-        for _ in 0..<s.count { proxy.deleteBackward() }
-    }
-
-    /// アプリが範囲の下線表示を平らにしてしまったか。健康なソロではカーソルの後ろは
-    /// 確定して置いた「後ろの分」だけだが、平らになると（このチャット欄などカスタム入力欄）
-    /// カーソルが先頭に戻って読み全体が後ろに来る
-    private func soloFlattened() -> Bool {
-        guard soloRemainder != nil, composer.reading.count > 1 else { return false }
-        guard let after = textDocumentProxy.documentContextAfterInput else { return false }
-        return after.hasPrefix(composer.reading)
-    }
-
-    /// 平らにされたら、文書には一切触らず範囲選択を静かに解く。このまま下線の差し替えを
-    /// 続けると、アプリ側では挿入として暴れて本文に混ざってしまうため（v0.37.33）
-    private func fallbackSoloFlattened() {
-        traceRange("アプリ側で下線が平らになったため、範囲選択を解除")
+        guard soloRemainder != nil else { return }
         soloRemainder = nil
         composer.exitRangeMode()
-        composer.reset()
-        markedActive = false
-        refreshBar()
     }
 
     private func commitCandidate(_ index: Int) {
-        // 平らにされたソロのまま候補を確定すると文書が壊れるので、先に範囲を解く
-        if soloRemainder != nil, soloFlattened() {
-            fallbackSoloFlattened()
-            return
-        }
         // ライブ変換で文節を選び直している途中は、確定せず、その文節を入れ替える
         if composer.chooseClauseAlt(index) {
             updateComposition()
@@ -1543,14 +1499,11 @@ final class KeyboardViewController: UIInputViewController {
         guard let text = composer.commit(candidateAt: index) else { return }
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
         insertCommitted(text)
-        // 範囲だけを変換中で残していた場合は、後ろに未変換で確定してあった分を文書から消し、
-        // 続きとして変換待ちに戻す（composer 側は残りの読みを変換待ちとして持っている）
-        if let s = soloRemainder {
+        // 範囲だけを変換中で残していた場合は、キーボード側で覚えていた後ろの分が
+        // 残りの読みとして変換待ちに戻る（composer 側が持っている）。文書側の後始末はいらない
+        if soloRemainder != nil {
             soloRemainder = nil
-            traceRange("候補で確定: ソロ解除、後ろ[\(s)]を消して変換待ちに戻す")
-            let proxy = textDocumentProxy
-            proxy.adjustTextPosition(byCharacterOffset: (s as NSString).length)
-            for _ in 0..<s.count { proxy.deleteBackward() }
+            traceRange("候補で確定: 範囲を確定、後ろの分を変換待ちに戻す")
         }
         if composer.isEmpty {
             lastCommit = cursorInsidePair ? nil : (text, reading)   // カーソルが括弧の中にあると取り消せないので覚えない
