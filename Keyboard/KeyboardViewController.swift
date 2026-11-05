@@ -392,12 +392,9 @@ final class KeyboardViewController: UIInputViewController {
         switch def.action {
         case .kana(let chars):
             let s = pick(chars, dir)
-            // 句読点は読みに足さず、その場で確定してから入れる（iOS標準の動き）。
-            // 読みに足すと、後ろに打ち続けた分とひとつの読みになって、まとめて変換されてしまう
-            if !composer.isEmpty, ["、", "。", "？", "！"].contains(s) {
-                commitAndPunctuate(s)
-                return
-            }
+            // 句読点も読みに含めて、変換は続ける（v0.37.36。v0.37.22〜35 の「句読点で確定」はやめた。
+            // 元の問題は「確定で勝手に変換される（。→…）」ことで、それは候補の自動選択をやめた
+            // v0.37.23 の直しで解消済み。句読点で変換を終わらせる必要はなかった）
             // 候補を選んでいたら先に確定する
             if composer.selectedIndex != nil { commitAll() }
             let alts = keyboardView.lastAlts.keyID == def.id ? keyboardView.lastAlts.chars : []
@@ -415,11 +412,7 @@ final class KeyboardViewController: UIInputViewController {
             let jp = [",": "、", ".": "。", "?": "？", "!": "！", "-": "ー"]
             if def.id == "qpunct" || raw.first?.isNumber == true {
                 let mapped = jp[raw] ?? raw
-                // 句読点は、かなのときと同じく、その場で確定してから入れる
-                if !composer.isEmpty, ["、", "。", "？", "！"].contains(mapped) {
-                    commitAndPunctuate(mapped)
-                    return
-                }
+                // 句読点は、かなのときと同じく読みに含めて変換を続ける（v0.37.36）
                 if composer.selectedIndex != nil { commitAll() }
                 composer.insert(mapped)
                 updateComposition()
@@ -1503,21 +1496,6 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.resetFlickHistory()
         insertCommitted(text)
         lastCommit = cursorInsidePair ? nil : (text, reading)
-        refreshBar()
-        schedulePredictions()
-    }
-
-    /// 句読点で確定する：今の内容を確定してから句読点を入れる（iOS標準の動き）。
-    /// 候補を選んでいればその候補で確定し、選んでいなければ読みのまま確定する（composer.commitAll の判断に任せる）。
-    /// 取り消し（⌫の下フリック）で戻せるよう、句読点も含めて lastCommit に覚える
-    private func commitAndPunctuate(_ s: String) {
-        guard !composer.isEmpty else { return }
-        let reading = composer.reading
-        let text = composer.commitAll()
-        keyboardView.resetFlickHistory()
-        insertCommitted(text)
-        textDocumentProxy.insertText(s)
-        lastCommit = cursorInsidePair ? nil : (text + s, reading)
         refreshBar()
         schedulePredictions()
     }
