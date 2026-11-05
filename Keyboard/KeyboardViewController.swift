@@ -912,6 +912,11 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
     private func updateComposition() {
+        // ソロ中にアプリが下線を平らにしていたら、下線の差し替えが本文に混ざる前に範囲を解く
+        if soloRemainder != nil, soloFlattened() {
+            fallbackSoloFlattened()
+            return
+        }
         composer.typoCorrection = model.settings.typoCorrection
         composer.liveConversion = model.settings.liveConversion
         composer.zenzai = model.settings.zenzai
@@ -1486,6 +1491,11 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return }
             self.traceRange("離して0.6秒後: \(self.proxyContext(self.textDocumentProxy)) solo=\(self.soloRemainder != nil) 範囲モード=\(self.composer.rangeMode)")
         }
+        // アプリが下線を平らにする場合は早めに検出して範囲を解く（この後の⌫や確定で本文が壊れるのを防ぐ）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, self.soloRemainder != nil, self.soloFlattened() else { return }
+            self.fallbackSoloFlattened()
+        }
     }
 
     /// 範囲だけを変換中で残した状態を解く：確定してあった後ろの分を消し、読み全体の変換待ちに戻す
@@ -1498,7 +1508,32 @@ final class KeyboardViewController: UIInputViewController {
         for _ in 0..<s.count { proxy.deleteBackward() }
     }
 
+    /// アプリが範囲の下線表示を平らにしてしまったか。健康なソロではカーソルの後ろは
+    /// 確定して置いた「後ろの分」だけだが、平らになると（このチャット欄などカスタム入力欄）
+    /// カーソルが先頭に戻って読み全体が後ろに来る
+    private func soloFlattened() -> Bool {
+        guard soloRemainder != nil, composer.reading.count > 1 else { return false }
+        guard let after = textDocumentProxy.documentContextAfterInput else { return false }
+        return after.hasPrefix(composer.reading)
+    }
+
+    /// 平らにされたら、文書には一切触らず範囲選択を静かに解く。このまま下線の差し替えを
+    /// 続けると、アプリ側では挿入として暴れて本文に混ざってしまうため（v0.37.33）
+    private func fallbackSoloFlattened() {
+        traceRange("アプリ側で下線が平らになったため、範囲選択を解除")
+        soloRemainder = nil
+        composer.exitRangeMode()
+        composer.reset()
+        markedActive = false
+        refreshBar()
+    }
+
     private func commitCandidate(_ index: Int) {
+        // 平らにされたソロのまま候補を確定すると文書が壊れるので、先に範囲を解く
+        if soloRemainder != nil, soloFlattened() {
+            fallbackSoloFlattened()
+            return
+        }
         // ライブ変換で文節を選び直している途中は、確定せず、その文節を入れ替える
         if composer.chooseClauseAlt(index) {
             updateComposition()
