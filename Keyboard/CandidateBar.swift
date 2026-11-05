@@ -108,6 +108,11 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         ])
     }
 
+    /// 読みのラベルだけ差し替える（範囲選択のドラッグ中など、候補を作り直さずに対象を見せ続けるとき用）
+    func setReadingLabel(_ reading: String?) {
+        updateReadingButton(reading, hasItems: true)
+    }
+
     private func updateReadingButton(_ reading: String?, hasItems: Bool) {
         guard let reading, !reading.isEmpty, hasItems else { readingButton.isHidden = true; return }
         var title = AttributedString(reading)

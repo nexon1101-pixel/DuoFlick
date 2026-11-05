@@ -180,8 +180,9 @@ final class Composer {
 
     /// ライブ変換で、帯に小さく出す読み。文節を選び直している間は、その文節の読み
     var readingLabel: String? {
+        // 範囲選択中は、ライブ変換でなくても範囲の読みを出す（どこまでが変換対象か分かるように）
+        if rangeMode, !composing.isEmpty { return rangeReading }
         guard liveConversion, !composing.isEmpty else { return nil }
-        if rangeMode { return rangeReading }
         if let k = focusClause, k < liveClauses.count { return liveClauses[k].reading }
         return composing.convertTarget
     }
@@ -206,9 +207,6 @@ final class Composer {
         selectedIndex = nil
         focusClause = nil
     }
-
-    /// 帯の先頭に、前に選んだ記号などを出しているか
-    private var frontExtra: Bool { extraAt == 0 && !extras.isEmpty }
 
     /// 選び直している文節を、入力欄の下線の文字の中で選択して見せる範囲
     var markedHighlight: NSRange? {
@@ -301,7 +299,6 @@ final class Composer {
     /// 入力欄に下線付きで表示する文字
     var markedText: String {
         if readingMode { return composing.convertTarget }
-        if frontExtra, focusClause == nil, selectedIndex == nil { return extras[0] }
         if focusClause == nil, let i = selectedIndex, i < displayCount {
             if let ci = candidateIndex(forDisplay: i) {
                 return candidates[ci].text + readingAfterSegment
@@ -845,7 +842,8 @@ final class Composer {
             reset()
             return t
         }
-        if frontExtra, focusClause == nil, selectedIndex == nil { selectedIndex = 0 }
+        // 候補を選んでいない確定は、読みのままにする。前によく選んだ記号の形が帯の先頭に
+        // あっても、勝手にそれで確定しない（「。」を打って確定したら「…」が出た、という報告への対応）
         if liveUsable, focusClause != nil || selectedIndex == nil {
             return commitLive()
         }

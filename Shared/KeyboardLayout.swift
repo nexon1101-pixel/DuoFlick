@@ -151,8 +151,10 @@ enum KeyboardLayout {
         return Built(keys: raws, minX: 0, maxX: avail, minY: 0, maxY: y - g)
     }
 
-    private static func isLeftHand(_ s: KeyboardSettings) -> Bool {
-        s.shape != .standard && s.hand == .left
+    /// 左手用か。扇形のときは、端のボタンでの寄せ替え（fanDockFlip）で手ごと反転する
+    /// （位置だけ左に移しても扇の開きが右手のままでは意味がないので、並び・角度・寄せを全部まとめて反転させる）
+    static func isLeftHand(_ s: KeyboardSettings) -> Bool {
+        s.shape != .standard && (s.hand == .left) != (s.shape == .fan && s.fanDockFlip)
     }
 
     private static func build(_ s: KeyboardSettings, _ mode: InputMode, _ grip: Grip, _ W: CGFloat, _ fit: CGFloat) -> Built {
@@ -314,11 +316,9 @@ enum KeyboardLayout {
         let m: CGFloat = mm(s.marginMM)
         let topPad: CGFloat = mm(1.5) + topInset
         let dx: CGFloat
-        // 扇形のときは、端のボタンで寄せる側を反転できる（キーの並びや扇の向きは変えず、寄せる側だけ）
-        let dockLeft = isLeftHand(s) != (s.shape == .fan && s.fanDockFlip)
         if centered {
             dx = (W - b.width) / 2 - b.minX
-        } else if dockLeft {
+        } else if isLeftHand(s) {
             dx = m - b.minX
         } else {
             dx = W - m - b.maxX
