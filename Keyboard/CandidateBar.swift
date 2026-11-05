@@ -257,8 +257,10 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         switch g.state {
         case .began:
             let p = g.location(in: stack)
-            guard let b = stack.arrangedSubviews.compactMap({ $0 as? UIButton })
-                .first(where: { $0.frame.contains(p) }) else { return }
+            let buttons = stack.arrangedSubviews.compactMap({ $0 as? UIButton })
+            // ボタンの隙間や読みラベルを長押ししても範囲選択に入れるよう、外れたら先頭候補に寄せる。
+            // 以前はここで無言で終わり、長押しが効いていないように見えた（v0.37.28）
+            guard let b = buttons.first(where: { $0.frame.contains(p) }) ?? buttons.first else { return }
             rangeActive = true
             rangeStartX = g.location(in: self).x
             scroll.isScrollEnabled = false

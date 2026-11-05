@@ -1427,8 +1427,8 @@ final class KeyboardViewController: UIInputViewController {
     private func rangePressEnded() {
         guard composer.rangeMode else { return }
         updateComposition()
-        // ライブ変換系では表示の仕組みが違うので、この形にはしない
-        guard !model.settings.liveConversion, !model.settings.zenzai else { return }
+        // v0.37.28: ライブ変換／Zenzai が有効だと丸ごと無効化していた条件を撤廃。
+        // ユーザーはライブ変換 ON で使うため、この条件がある限り実機では一生発動しなかった（2026-11-05 実機報告の原因）
         let suffix = composer.rangeSuffixReading
         guard !suffix.isEmpty else { return }
         clearMarked()

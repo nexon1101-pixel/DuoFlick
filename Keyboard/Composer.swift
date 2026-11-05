@@ -777,8 +777,9 @@ final class Composer {
     /// 候補の長押しで範囲選択に入る。最初の範囲は読み全体で、先頭を固定したまま
     /// ドラッグ（前にスクロール）で末尾から狭めていく
     func enterRangeMode(candidateAt index: Int) -> Bool {
-        guard focusClause == nil, !composing.isEmpty, index < displayCount,
-              candidateIndex(forDisplay: index) != nil else { return false }
+        // 範囲は「読み」に対して決めるもので、押した候補が変換候補そのものかは関係ない。
+        // 先頭に読みそのまま等の追加候補が並ぶ場合に候補対応付けが取れず、入口で無言で失敗していた（v0.37.28）
+        guard focusClause == nil, !composing.isEmpty, index < displayCount else { return false }
         rangeLength = composing.convertTarget.count
         rangeMode = true
         selectedIndex = nil
