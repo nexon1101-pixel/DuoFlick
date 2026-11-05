@@ -20,6 +20,8 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
     var onRangeEnded: (() -> Void)?
     /// 範囲選択のドラッグ中かどうか（帯側の長押し判定は帯全体で持ち、候補を作り直しても途切れないようにする）
     private var rangeActive = false
+    /// 範囲選択を始めた位置（長押しには translation がないので、始点からの移動量をここから出す）
+    private var rangeStartX: CGFloat = 0
     /// 左上の読み（ひらがな）を押したとき
     var onReading: (() -> Void)?
     /// 右端の∨／∧ボタン（候補の一覧を開く・閉じる）
@@ -253,10 +255,11 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
             guard let b = stack.arrangedSubviews.compactMap({ $0 as? UIButton })
                 .first(where: { $0.frame.contains(p) }) else { return }
             rangeActive = true
+            rangeStartX = g.location(in: self).x
             scroll.isScrollEnabled = false
             onRangeBegan?(b.tag)
         case .changed:
-            if rangeActive { onRangeDragged?(g.translation(in: self).x) }
+            if rangeActive { onRangeDragged?(g.location(in: self).x - rangeStartX) }
         case .ended, .cancelled, .failed:
             if rangeActive { onRangeEnded?() }
             rangeActive = false
