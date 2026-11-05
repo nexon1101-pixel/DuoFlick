@@ -755,14 +755,12 @@ final class Composer {
     /// 範囲の読み（先頭から rangeLength 文字）
     private var rangeReading: String { String(composing.convertTarget.prefix(rangeLength)) }
 
-    /// 候補の長押しで範囲選択に入る。最初の範囲は、その候補の先頭の文節の長さ
+    /// 候補の長押しで範囲選択に入る。最初の範囲は読み全体で、先頭を固定したまま
+    /// ドラッグ（前にスクロール）で末尾から狭めていく
     func enterRangeMode(candidateAt index: Int) -> Bool {
         guard focusClause == nil, !composing.isEmpty, index < displayCount,
-              let ci = candidateIndex(forDisplay: index) else { return false }
-        let c = candidates[ci]
-        let first = Candidate.makePrefixClauseCandidate(data: c.data[...])
-        let n = first.data.reduce(0) { $0 + $1.ruby.count }
-        rangeLength = n > 0 ? n : min(1, composing.convertTarget.count)
+              candidateIndex(forDisplay: index) != nil else { return false }
+        rangeLength = composing.convertTarget.count
         rangeMode = true
         selectedIndex = nil
         loadRangeCandidates()
