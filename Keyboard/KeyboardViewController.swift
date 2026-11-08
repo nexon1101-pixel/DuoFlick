@@ -529,12 +529,11 @@ final class KeyboardViewController: UIInputViewController {
                 deleteWord()
             } else if composer.isEmpty {
                 composer.clearPredictions()
-                if let sel = proxy.selectedText, !sel.isEmpty {
-                    // 選択中（Safari のアドレス欄の補完など）は、選択だけを消す。deleteBackward だと補完の文字に加えて1文字余分に消えたため、置き換えで消す
-                    proxy.insertText("")
-                } else {
-                    proxy.deleteBackward()
-                }
+                // 選択中も deleteBackward で消す（選択を消すのが本来の意味論）。
+                // 以前は Safari のアドレス欄の補完で1文字余分に消えるのを避けて insertText("") の
+                // 置き換えで消していたが、空文字の挿入は多くの入力欄で「何も入れない」扱いに
+                // なって選択が消えなかったため、標準方式に戻した（v0.37.40。Safari 補完の件は割り切り）
+                proxy.deleteBackward()
                 refreshBar()
             } else {
                 composer.deleteBackward()
@@ -710,7 +709,7 @@ final class KeyboardViewController: UIInputViewController {
         ["、", "。", "？", "！", "「", "」"].contains(s)
     }
 
-    /// ⌫の左フリック：入力中なら全部消す。そうでなければ直前の語（同じ種類の文字が続く部分）を消す
+    /// ⌫の上フリック：入力中なら全部消す。そうでなければ直前の語を、手前の空白・改行ごと消す
     private func deleteWord() {
         if !composer.isEmpty {
             composer.reset()
@@ -719,19 +718,28 @@ final class KeyboardViewController: UIInputViewController {
         }
         composer.clearPredictions()
         let proxy = textDocumentProxy
-        guard let before = proxy.documentContextBeforeInput, let last = before.last else { refreshBar(); return }
-        let count: Int
-        if last.isWhitespace || last.isNewline {
-            count = before.reversed().prefix { $0.isWhitespace || $0.isNewline }.count
-        } else {
-            let kind = charKind(last)
-            count = before.reversed().prefix { charKind($0) == kind }.count
+        guard let before = proxy.documentContextBeforeInput, !before.isEmpty else { refreshBar(); return }
+        let chars = Array(before)
+        var i = chars.count
+        // 末尾の空白・改行 → 直前の語（同じ種類の文字のかたまり）→ その手前の空白・改行、
+        // の順に最大3かたまりまでを1回で消す。語と改行を別々に消すと境界で一拍止まって
+        // 行をまたげないため、セットにした（v0.37.40）
+        func skipRun(_ pred: (Character) -> Bool) -> Int {
+            var n = 0
+            while i > 0, pred(chars[i - 1]) { i -= 1; n += 1 }
+            return n
+        }
+        var count = skipRun { charKind($0) == 5 }
+        if i > 0 {
+            let kind = charKind(chars[i - 1])
+            count += skipRun { charKind($0) == kind }
+            count += skipRun { charKind($0) == 5 }
         }
         for _ in 0..<max(1, count) { proxy.deleteBackward() }
         refreshBar()
     }
 
-    /// ⌫の左フリック：入力中なら全部消す。そうでなければ、いまの行の、カーソルより前を消す
+    /// ⌫の左フリック：入力中なら全部消す。そうでなければ、いまの行のカーソルより前を、直前の改行ごと消す
     private func deleteLine() {
         if !composer.isEmpty {
             composer.reset()
@@ -742,9 +750,15 @@ final class KeyboardViewController: UIInputViewController {
         let proxy = textDocumentProxy
         guard let before = proxy.documentContextBeforeInput, !before.isEmpty else { refreshBar(); return }
         let line = before.split(separator: "\n", omittingEmptySubsequences: false).last.map(String.init) ?? ""
-        // 行の先頭にいるときは、前の行との改行を消す
-        let text = line.isEmpty ? "\n" : line
-        for _ in 0..<text.count { proxy.deleteBackward() }
+        // 行の文字と、その直前の改行をセットで消す（行の先頭にいるときは改行だけ）。
+        // 別々だと1行消すのに2回かかり、フリック保持の繰り返しでも改行で引っかかるため（v0.37.40）
+        var count = line.count
+        if line.isEmpty {
+            count = 1   // 改行そのもの
+        } else if before.count > line.count {
+            count += 1   // 行の直前にある改行（見えている範囲の先頭行では付けない）
+        }
+        for _ in 0..<count { proxy.deleteBackward() }
         refreshBar()
     }
 
