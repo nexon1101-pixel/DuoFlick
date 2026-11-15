@@ -134,23 +134,10 @@ final class KeyboardViewController: UIInputViewController {
             self?.dismissKeyboard()
         }
 
-        // アプリが背面へ移るときも学習を保存する（閉じるときの保存と同じ契機。v0.37.41、案3）
-        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
-                                               object: nil, queue: .main) { [weak self] _ in
-            self?.composer.save()
-        }
-
         composer.userWords = dictionary.words
         dictionary.onChange = { [weak self] in
             guard let self else { return }
             self.composer.userWords = self.dictionary.words
-        }
-        // 変換エンジンとAIモデルの読み込みを先に済ませておく（初回の変換で読み込むと、
-        // その間キーも候補も反応しなくなるため。v0.37.44）
-        composer.prepareConverter()
-        let wz = model.settings.zenzai, wh = model.settings.zenzaiHigh
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.composer.warmUp(zenzai: wz, high: wh)
         }
         model.onChange = { [weak self] s in
             guard let self else { return }
@@ -173,8 +160,6 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.grip = model.grip
         dictionary.reload()
         phrases.reload()
-        // 変換待ちの復帰は、文字種の初期化（確定を伴うことがある）より前に確かめる
-        resumeComposition()
         applyKeyboardType()
         haptic.prepare()
         flickHaptic.prepare()
@@ -185,11 +170,9 @@ final class KeyboardViewController: UIInputViewController {
             clipboardTimer?.invalidate()
             clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
                 guard let self else { return }
-                // 入力中は pasteboard を読まない（毎秒の読みが打鍵と重ならないように。v0.37.41、案3）
-                guard self.composer.isEmpty else { return }
                 self.clipboard.capture()
                 // 開いた直後は貼り付けチップの判定が間に合わないことがあるので、後から出し直す
-                if !self.pasteChip, !self.imageChip { self.refreshBar() }
+                if self.composer.isEmpty, !self.pasteChip, !self.imageChip { self.refreshBar() }
             }
         }
         // 開くたびに帯を出し直す。立ち上げ直後（viewDidLoad）の初回判定だけでは、
@@ -222,61 +205,8 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillDisappear(animated)
         clipboardTimer?.invalidate()
         clipboardTimer = nil
-        // 変換待ちは確定せずに残す（標準のキーボードと同じく、下線の文字は入力欄に残る）。
-        // 以前はここで全部確定していたが、確定が入力欄に届かない閉じ方だと変換待ちだけ
-        // 消えて、開き直したときに文字ごと消えた（v0.37.44 で変更）
-        savePendingComposition()
+        commitAll()
         composer.save()
-    }
-
-    // MARK: - 変換待ちの保存と復帰（閉じても、開き直せば続きを打てるように）
-
-    private static let pendingCompositionKey = "DuoFlick.pendingComposition"
-
-    /// 変換待ちの読みと、下線で出している文字を覚えておく（プロセスが作り直されても戻せるように）
-    private func savePendingComposition() {
-        if composer.isEmpty {
-            clearPendingComposition()
-        } else {
-            SharedStore.defaults.set([composer.reading, shownMarked], forKey: Self.pendingCompositionKey)
-        }
-    }
-
-    private func savedPendingComposition() -> (reading: String, marked: String)? {
-        guard let a = SharedStore.defaults.stringArray(forKey: Self.pendingCompositionKey),
-              a.count == 2, !a[0].isEmpty else { return nil }
-        return (a[0], a[1])
-    }
-
-    private func clearPendingComposition() {
-        SharedStore.defaults.removeObject(forKey: Self.pendingCompositionKey)
-    }
-
-    /// 開き直したとき、変換待ちが入力欄に残っているか確かめる。
-    /// 残っていれば続きを打てるようにし、残っていなければ（送信された・別の入力欄など）捨てる
-    private func resumeComposition() {
-        let proxy = textDocumentProxy
-        let before = proxy.documentContextBeforeInput ?? ""
-        if !composer.isEmpty {
-            // プロセスが生きていて、変換待ちが残っている場合：
-            // 入力欄の文脈の末尾に下線の文字が残っているときだけ続ける。
-            // それ以外（送信された・別の入力欄・カーソルが動いた等）は、変換待ちを捨てる
-            if !shownMarked.isEmpty, before.hasSuffix(shownMarked) { return }
-            composer.reset()
-            markedActive = false
-            markedVisible = false
-            clearPendingComposition()
-            return
-        }
-        // プロセスが作り直されていた場合：覚えておいた読みを、入力欄に下線の文字が
-        // 残っているときだけ戻す（文脈で確かめられない入力欄では戻さない）
-        guard let saved = savedPendingComposition() else { return }
-        if !saved.marked.isEmpty, before.hasSuffix(saved.marked) {
-            composer.restore(reading: saved.reading)
-            updateComposition()
-        } else {
-            clearPendingComposition()
-        }
     }
 
     override func viewWillLayoutSubviews() {
@@ -317,7 +247,6 @@ final class KeyboardViewController: UIInputViewController {
             if !self.composer.isEmpty {
                 if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty, !proxy.hasText {
                     self.composer.reset()
-                    self.clearPendingComposition()
                     self.markedActive = false
                     self.markedVisible = false
                     self.lastCommit = nil
@@ -421,8 +350,6 @@ final class KeyboardViewController: UIInputViewController {
             }
             return
         }
-        // 学習の保存は「最後の打鍵から数秒の無操作」の契機に寄せる（v0.37.41、案3）
-        composer.noteActivity()
         // 範囲選択の確定待ちの間は、空白（候補の選択）以外のキーを、
         // まず範囲を解いて読み全体の変換待ちに戻してから処理する。⌫は解くこと自体で消費する
         if composer.rangeMode {
@@ -630,23 +557,12 @@ final class KeyboardViewController: UIInputViewController {
                 commitAll()
             }
         case .modeSwitch:
-            // 続けて2回タップしたら、絵文字を開く（1回目の切り替えは元に戻す。
-            // 英字面の「A／あ」キーのダブルタップと同じ作り。かな面の「ABC」キーにも
-            // 絵文字の入り口が要るため、v0.37.43 でこちらにも付けた）
-            let now = Date()
-            if now.timeIntervalSince(lastModeTap) < 0.4 {
-                lastModeTap = .distantPast
-                setMode(mode.next)
-                showEmoji()
-            } else {
-                lastModeTap = now
-                setMode(mode.next)
-            }
+            setMode(mode.next)
             saveLastMode()
         case .settings:
             toggleSettings()
         case .nextKeyboard:
-            // 地球儀：タップでキーボードを切り替え、上で設定、右でクリップボード、下で定型文（絵文字は「A／あ」キーか「ABC／あいう」キーのダブルタップ）
+            // 地球儀：タップでキーボードを切り替え、上で設定、右でクリップボード、下で定型文（絵文字は英字の「A／あ」キーのダブルタップ）
             switch dir {
             case .up: toggleSettings()
             case .left: return
@@ -660,7 +576,6 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private var lastWidthTap = Date.distantPast
-    private var lastModeTap = Date.distantPast
 
     private func toggleSettings() {
         if topHost != nil { hideTop() }
@@ -914,6 +829,7 @@ final class KeyboardViewController: UIInputViewController {
             return true
         }
         guard composer.enterRangeMode(candidateAt: 0) else { return false }
+        traceRange("次候補長押し: 範囲に入った（全体=\(composer.rangeLength)文字）")
         rangeStartLength = composer.rangeLength
         updateComposition()
         return true
@@ -1005,9 +921,6 @@ final class KeyboardViewController: UIInputViewController {
     private func insertCommitted(_ text: String) {
         textDocumentProxy.insertText(text)
         markedActive = false
-        // 確定したら、閉じたとき用の変換待ちの保存は消す（部分確定のときは、
-        // このあとの updateComposition で残りの読みが保存し直される）
-        clearPendingComposition()
         // 括弧の対だけを確定したときは、中にカーソルを置く（続きの変換が残っているときは動かさない）
         cursorInsidePair = false
         if composer.isEmpty, text.count == 2, Self.pairTexts.contains(text) {
@@ -1039,7 +952,6 @@ final class KeyboardViewController: UIInputViewController {
         }
         refreshBar()
         scheduleCandidates()
-        savePendingComposition()
     }
 
     /// 確定の文字を先に入れてから、次の予測を計算する
@@ -1064,26 +976,21 @@ final class KeyboardViewController: UIInputViewController {
     private func scheduleCandidates() {
         candidateWork?.cancel()
         guard composer.needsRefresh else { return }
-        let work = DispatchWorkItem { [weak self] in
-            self?.runPendingRefresh()
-        }
-        candidateWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
-    }
-
-    /// 変換の追いつきを今すぐ行う（scheduleCandidates のデバウンスの本体。
-    /// 一覧を開くときにも使う）
-    private func runPendingRefresh() {
         composer.zenzai = model.settings.zenzai
         composer.zenzaiHigh = model.settings.zenzaiHigh
         updateLeftContext()
-        composer.refreshIfNeeded()
-        refreshBar()
-        // ライブ変換：変換が済んだら、入力欄の下線の文字を変換した形に入れ替える
-        if model.settings.liveConversion, !composer.isEmpty, markedActive {
-            let t = composer.markedText
-            if t != shownMarked { showMarked(t, highlight: composer.markedHighlight) }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.composer.refreshIfNeeded()
+            self.refreshBar()
+            // ライブ変換：変換が済んだら、入力欄の下線の文字を変換した形に入れ替える
+            if self.model.settings.liveConversion, !self.composer.isEmpty, self.markedActive {
+                let t = self.composer.markedText
+                if t != self.shownMarked { self.showMarked(t, highlight: self.composer.markedHighlight) }
+            }
         }
+        candidateWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
     }
 
     /// 入力中は変換候補、確定直後は予測、それ以外は何も出さない
@@ -1161,22 +1068,10 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 候補の一覧
 
-    /// 一覧を開いたときの候補スナップショット（開いている間は固定し、
-    /// 閉じたときに変換が追いつく。確定はこの中の候補オブジェクトで行う。v0.37.41、案2）
-    private var listItems: [Composer.DisplayItem] = []
-
     private func toggleCandidateList() {
         if isCandidateListOpen { closeCandidateList(); return }
-        // 変換がまだ追いついていないときだけ、開く前に同期で追いつかせる。
-        // v0.37.41 で開くときの追いつきを全面的に外したところ、打鍵直後の
-        // 1回目のオープンで変換前の候補（または空）が出て「読み込みのラグ」と
-        // 感じられた（実機報告 2026-11-15）。追いついているときは即開く。
-        if composer.needsRefresh {
-            candidateWork?.cancel()
-            runPendingRefresh()
-        }
-        listItems = Array(composer.currentItems.prefix(120))
-        candidateListView.setItems(listItems.map(\.text))
+        composer.refreshIfNeeded()
+        candidateListView.setItems(Array(composer.listTexts.prefix(120)))
         openCandidateList()
     }
 
@@ -1232,8 +1127,6 @@ final class KeyboardViewController: UIInputViewController {
             self.keyboardView.alpha = 1
             self.middleHost?.view.alpha = 1
         }, completion: nil)
-        // 一覧を開いている間は候補を固定していたので、閉じたあとに変換を追いつかせる（案2）
-        if composer.needsRefresh { scheduleCandidates() }
     }
 
     private func hideCandidateList() {
@@ -1242,11 +1135,9 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 一覧から選んだとき。状態とキーの復帰を先に済ませてから確定する。
     /// 確定の文字入れや帯の更新を、アニメーション完了待ちにしない。
-    /// 一覧に出ていた候補オブジェクトそのもので確定する（開いた時点のスナップショット。案2）
     private func selectFromCandidateList(_ index: Int) {
         closeCandidateList()
-        guard index < listItems.count else { return }
-        commitCandidate(listItems[index])
+        commitCandidate(index)
     }
 
     /// 「@」のあとに出す、よく使うメールのドメイン
@@ -1494,13 +1385,13 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         if !composer.isEmpty {
-            if composer.needsRefresh {
+            if composer.rangeMode {
+                // 範囲選択中は、帯の番号は範囲だけの候補の番号。そのまま渡す
+                commitCandidate(index)
+            } else if composer.needsRefresh {
                 candidateWork?.cancel()
-                // 押されたのは変換が追いつく前の候補。候補オブジェクトを先に掴んでから
-                // 変換を追いつかせ、確定はオブジェクト経由にする（v0.37.41、案2）
-                guard let item = composer.item(at: index) else { refreshBar(); return }
-                composer.refreshIfNeeded()
-                commitCandidate(item)
+                guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
+                commitCandidate(fresh)
             } else {
                 commitCandidate(index)
             }
@@ -1526,11 +1417,17 @@ final class KeyboardViewController: UIInputViewController {
             if self?.panelModel.suppressSelect == index { self?.panelModel.suppressSelect = nil }
         }
         guard !composer.isEmpty, composer.focusClause == nil else { return }
+        var index = index
         if composer.needsRefresh {
             candidateWork?.cancel()
-            composer.refreshIfNeeded()
+            guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
+            index = fresh
         }
-        guard composer.enterRangeMode(candidateAt: index) else { return }
+        guard composer.enterRangeMode(candidateAt: index) else {
+            traceRange("長押し: 範囲に入れなかった（候補番号=\(index) 空=\(composer.isEmpty) 文節選択中=\(composer.focusClause != nil)）")
+            return
+        }
+        traceRange("長押し: 範囲に入った（全体=\(composer.rangeLength)文字）")
         rangeStartLength = composer.rangeLength
         updateComposition()
     }
@@ -1542,35 +1439,52 @@ final class KeyboardViewController: UIInputViewController {
         // カーソル移動と同じく、2.2mmで1文字ぶん
         let steps = Int((dx / (2.2 * CGFloat(KeyboardSettings.ptPerMM))).rounded())
         if composer.setRangeLength(rangeStartLength + steps) {
+            traceRange("ドラッグ: 範囲=\(composer.rangeLength)文字")
             showMarked(composer.markedText, highlight: composer.markedHighlight)
         }
     }
 
     /// 範囲選択は入力欄の表示（全体の変換待ち＋範囲の選択表示）の中だけで完結させる（v0.37.35〜）
 
-    /// 範囲選択の指を離した：範囲はそのままで、帯に範囲だけの候補を出す
+    /// 範囲選択の一連の動きの記録（切り分け用。「変換の診断」の末尾に出す）。
+    /// v0.37.30: メモリだけだとキーボードのプロセスが再起動したときに消えるので、共有の保存先に残す
+    private static let rangeTraceKey = "DuoFlick.rangeTrace"
+    private func traceRange(_ s: String) {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss.SSS"
+        var lines = SharedStore.defaults.stringArray(forKey: Self.rangeTraceKey) ?? []
+        lines.append("\(f.string(from: Date())) \(s)")
+        if lines.count > 40 { lines.removeFirst(lines.count - 40) }
+        SharedStore.defaults.set(lines, forKey: Self.rangeTraceKey)
+    }
+    private var savedRangeTrace: [String] {
+        SharedStore.defaults.stringArray(forKey: Self.rangeTraceKey) ?? []
+    }
+    private func proxyContext(_ proxy: UITextDocumentProxy) -> String {
+        "前[\(proxy.documentContextBeforeInput ?? "nil")] 後[\(proxy.documentContextAfterInput ?? "nil")] hasText=\(proxy.hasText)"
+    }
+
+    /// 範囲選択の指を離した：範囲はそのままで、帯に範囲だけの候補を出す。
+    /// 範囲の後ろは未変換のまま一度確定して文書に入れ、入力欄では範囲だけが変換中（下線）で残るようにする
     private func rangePressEnded() {
-        guard composer.rangeMode else { return }
-        // ドラッグ中は変換していないので、離したここで範囲の候補を引き直す（v0.37.41、案4）
-        composer.refreshRangeCandidates()
+        guard composer.rangeMode else {
+            traceRange("離す: 範囲モードでないため何もしない")
+            return
+        }
         // 離しても範囲選択はそのまま続ける。入力欄には読み全体が変換待ちで残り、
         // 範囲の部分だけが選択されて見える（文書への特別な操作はしない。v0.37.35）
         updateComposition()
+        traceRange("離す: 範囲=\(composer.rangeLength)文字（範囲選択を継続）")
     }
 
     private func commitCandidate(_ index: Int) {
-        guard let item = composer.item(at: index) else { return }
-        commitCandidate(item)
-    }
-
-    private func commitCandidate(_ item: Composer.DisplayItem) {
         // ライブ変換で文節を選び直している途中は、確定せず、その文節を入れ替える
-        if composer.chooseClauseAlt(item: item) {
+        if composer.chooseClauseAlt(index) {
             updateComposition()
             return
         }
         let reading = composer.reading
-        guard let text = composer.commit(item: item) else { return }
+        guard let text = composer.commit(candidateAt: index) else { return }
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
         insertCommitted(text)
         if composer.isEmpty {
@@ -1813,7 +1727,10 @@ final class KeyboardViewController: UIInputViewController {
                 self.composer.zenzai = self.model.settings.zenzai
                 self.composer.zenzaiHigh = self.model.settings.zenzaiHigh
                 self.updateLeftContext()
-                return self.composer.diagnostics()
+                var d = self.composer.diagnostics()
+                let lines = self.savedRangeTrace
+                d += "\n— 範囲選択の記録 —\n" + (lines.isEmpty ? "（まだ記録なし）" : lines.joined(separator: "\n"))
+                return d
             },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
             onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },

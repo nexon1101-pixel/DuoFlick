@@ -47,7 +47,6 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
         // 候補の長押し（範囲選択）：判定は帯全体で持つ
         let lp = UILongPressGestureRecognizer(target: self, action: #selector(rangePressed(_:)))
         lp.minimumPressDuration = 0.4
-        lp.delegate = self
         addGestureRecognizer(lp)
         scroll.showsHorizontalScrollIndicator = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -140,17 +139,6 @@ final class CandidateBar: UIView, UIGestureRecognizerDelegate {
             }
         default: break
         }
-    }
-
-    /// ∨／∧ボタンの上のタッチは、帯の長押し（範囲選択）に渡さない。
-    /// 長押しが成立するとボタンのタッチがキャンセルされ、∧を長めに押したときに
-    /// 一覧が閉じられなくなっていた（「一覧がすぐ閉じられない」件の本命。v0.37.41）
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        if gestureRecognizer is UILongPressGestureRecognizer, !expandButton.isHidden,
-           expandButton.frame.contains(touch.location(in: self)) {
-            return false
-        }
-        return true
     }
 
     /// 下向きで、縦の動きが大きいときだけ始める（横スクロールや候補のタップの邪魔をしない）
