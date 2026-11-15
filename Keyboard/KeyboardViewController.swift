@@ -557,12 +557,23 @@ final class KeyboardViewController: UIInputViewController {
                 commitAll()
             }
         case .modeSwitch:
-            setMode(mode.next)
+            // 続けて2回タップしたら、絵文字を開く（1回目の切り替えは元に戻す。
+            // 英字面の「A／あ」キーのダブルタップと同じ作り。かな面の「ABC」キーにも
+            // 絵文字の入り口が要るため、v0.37.46 で付けた）
+            let now = Date()
+            if now.timeIntervalSince(lastModeTap) < 0.4 {
+                lastModeTap = .distantPast
+                setMode(mode.next)
+                showEmoji()
+            } else {
+                lastModeTap = now
+                setMode(mode.next)
+            }
             saveLastMode()
         case .settings:
             toggleSettings()
         case .nextKeyboard:
-            // 地球儀：タップでキーボードを切り替え、上で設定、右でクリップボード、下で定型文（絵文字は英字の「A／あ」キーのダブルタップ）
+            // 地球儀：タップでキーボードを切り替え、上で設定、右でクリップボード、下で定型文（絵文字は「A／あ」キーか「ABC／あいう」キーのダブルタップ）
             switch dir {
             case .up: toggleSettings()
             case .left: return
@@ -576,6 +587,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private var lastWidthTap = Date.distantPast
+    private var lastModeTap = Date.distantPast
 
     private func toggleSettings() {
         if topHost != nil { hideTop() }
