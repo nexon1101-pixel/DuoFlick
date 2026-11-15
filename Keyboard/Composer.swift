@@ -109,6 +109,12 @@ final class Composer {
         s.applyingTransform(.hiraganaToKatakana, reverse: false) ?? s
     }
 
+    /// 濁点・半濁点が結合文字（または単独の゛゜）として付いた形（ヲ゚、ぇ゚、を゛ など）かどうか。
+    /// 正規の濁点つき文字（ヺ、ゔ、ヸ など）は合成済みの1文字なので当てはまらない
+    static func hasLooseMark(_ text: String) -> Bool {
+        text.unicodeScalars.contains { [0x3099, 0x309A, 0x309B, 0x309C].contains($0.value) }
+    }
+
     var isEmpty: Bool { composing.isEmpty }
     var reading: String { composing.convertTarget }
 
@@ -291,7 +297,7 @@ final class Composer {
         var list: [Candidate] = [cl.candidate]
         var seen: Set<String> = [cl.candidate.text]
         let n = cl.reading.count
-        for c in found where c.rubyCount == n && !seen.contains(c.text) {
+        for c in found where c.rubyCount == n && !seen.contains(c.text) && !Self.hasLooseMark(c.text) {
             seen.insert(c.text)
             list.append(c)
             if list.count >= 40 { break }
@@ -909,7 +915,7 @@ final class Composer {
         var list: [Candidate] = []
         var seen = Set<String>()
         for c in converter.requestCandidates(ct, options: o).mainResults
-        where c.rubyCount == n && seen.insert(c.text).inserted {
+        where c.rubyCount == n && seen.insert(c.text).inserted && !Self.hasLooseMark(c.text) {
             list.append(c)
             if list.count >= 40 { break }
         }
@@ -1293,6 +1299,9 @@ final class Composer {
         var found = converter.requestCandidates(target, options: requestOptions).mainResults
         // 絵文字の候補は出さない（顔文字は、読みから足す処理をやめた）
         found = found.filter { c in !c.text.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x2000) } }
+        // 濁点・半濁点を結合文字で付けただけの候補（ヲ゚、ぇ゚、を゛ など）は出さない。
+        // 変換エンジンが時々出す形で、実機で「わけの分からない°が付く」と言われた（v0.37.43）
+        found = found.filter { !Self.hasLooseMark($0.text) }
         if liveConversion || zenzai, !isSegmented {
             // ライブ変換・AI変換：読み全体の候補を、読みの続きを補った予測より先に並べる（帯の先頭を、下線の文字と同じにする）。
             // 読みをそのままカタカナ・ひらがなにしただけの候補は、ほかの候補のあとに回す
