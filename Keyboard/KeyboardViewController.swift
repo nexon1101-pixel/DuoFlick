@@ -134,6 +134,12 @@ final class KeyboardViewController: UIInputViewController {
             self?.dismissKeyboard()
         }
 
+        // アプリが背面へ移るときも学習を保存する（閉じるときの保存と同じ契機。v0.37.41、案3）
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            self?.composer.save()
+        }
+
         composer.userWords = dictionary.words
         dictionary.onChange = { [weak self] in
             guard let self else { return }
@@ -170,9 +176,11 @@ final class KeyboardViewController: UIInputViewController {
             clipboardTimer?.invalidate()
             clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
                 guard let self else { return }
+                // 入力中は pasteboard を読まない（毎秒の読みが打鍵と重ならないように。v0.37.41、案3）
+                guard self.composer.isEmpty else { return }
                 self.clipboard.capture()
                 // 開いた直後は貼り付けチップの判定が間に合わないことがあるので、後から出し直す
-                if self.composer.isEmpty, !self.pasteChip, !self.imageChip { self.refreshBar() }
+                if !self.pasteChip, !self.imageChip { self.refreshBar() }
             }
         }
         // 開くたびに帯を出し直す。立ち上げ直後（viewDidLoad）の初回判定だけでは、
@@ -350,6 +358,8 @@ final class KeyboardViewController: UIInputViewController {
             }
             return
         }
+        // 学習の保存は「最後の打鍵から数秒の無操作」の契機に寄せる（v0.37.41、案3）
+        composer.noteActivity()
         // 範囲選択の確定待ちの間は、空白（候補の選択）以外のキーを、
         // まず範囲を解いて読み全体の変換待ちに戻してから処理する。⌫は解くこと自体で消費する
         if composer.rangeMode {
@@ -829,7 +839,6 @@ final class KeyboardViewController: UIInputViewController {
             return true
         }
         guard composer.enterRangeMode(candidateAt: 0) else { return false }
-        traceRange("次候補長押し: 範囲に入った（全体=\(composer.rangeLength)文字）")
         rangeStartLength = composer.rangeLength
         updateComposition()
         return true
@@ -1068,10 +1077,16 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - 候補の一覧
 
+    /// 一覧を開いたときの候補スナップショット（開いている間は固定し、
+    /// 閉じたときに変換が追いつく。確定はこの中の候補オブジェクトで行う。v0.37.41、案2）
+    private var listItems: [Composer.DisplayItem] = []
+
     private func toggleCandidateList() {
         if isCandidateListOpen { closeCandidateList(); return }
-        composer.refreshIfNeeded()
-        candidateListView.setItems(Array(composer.listTexts.prefix(120)))
+        // 開くときに変換を待たない。今ある候補のスナップショットで即開く
+        // （以前は同期変換を待ってから開いていて、長い読みでは∧のタップが後ろに溜まっていた）
+        listItems = Array(composer.currentItems.prefix(120))
+        candidateListView.setItems(listItems.map(\.text))
         openCandidateList()
     }
 
@@ -1127,6 +1142,8 @@ final class KeyboardViewController: UIInputViewController {
             self.keyboardView.alpha = 1
             self.middleHost?.view.alpha = 1
         }, completion: nil)
+        // 一覧を開いている間は候補を固定していたので、閉じたあとに変換を追いつかせる（案2）
+        if composer.needsRefresh { scheduleCandidates() }
     }
 
     private func hideCandidateList() {
@@ -1135,9 +1152,11 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 一覧から選んだとき。状態とキーの復帰を先に済ませてから確定する。
     /// 確定の文字入れや帯の更新を、アニメーション完了待ちにしない。
+    /// 一覧に出ていた候補オブジェクトそのもので確定する（開いた時点のスナップショット。案2）
     private func selectFromCandidateList(_ index: Int) {
         closeCandidateList()
-        commitCandidate(index)
+        guard index < listItems.count else { return }
+        commitCandidate(listItems[index])
     }
 
     /// 「@」のあとに出す、よく使うメールのドメイン
@@ -1385,13 +1404,13 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         if !composer.isEmpty {
-            if composer.rangeMode {
-                // 範囲選択中は、帯の番号は範囲だけの候補の番号。そのまま渡す
-                commitCandidate(index)
-            } else if composer.needsRefresh {
+            if composer.needsRefresh {
                 candidateWork?.cancel()
-                guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
-                commitCandidate(fresh)
+                // 押されたのは変換が追いつく前の候補。候補オブジェクトを先に掴んでから
+                // 変換を追いつかせ、確定はオブジェクト経由にする（v0.37.41、案2）
+                guard let item = composer.item(at: index) else { refreshBar(); return }
+                composer.refreshIfNeeded()
+                commitCandidate(item)
             } else {
                 commitCandidate(index)
             }
@@ -1417,17 +1436,11 @@ final class KeyboardViewController: UIInputViewController {
             if self?.panelModel.suppressSelect == index { self?.panelModel.suppressSelect = nil }
         }
         guard !composer.isEmpty, composer.focusClause == nil else { return }
-        var index = index
         if composer.needsRefresh {
             candidateWork?.cancel()
-            guard let fresh = composer.freshIndex(forStale: index) else { refreshBar(); return }
-            index = fresh
+            composer.refreshIfNeeded()
         }
-        guard composer.enterRangeMode(candidateAt: index) else {
-            traceRange("長押し: 範囲に入れなかった（候補番号=\(index) 空=\(composer.isEmpty) 文節選択中=\(composer.focusClause != nil)）")
-            return
-        }
-        traceRange("長押し: 範囲に入った（全体=\(composer.rangeLength)文字）")
+        guard composer.enterRangeMode(candidateAt: index) else { return }
         rangeStartLength = composer.rangeLength
         updateComposition()
     }
@@ -1439,52 +1452,35 @@ final class KeyboardViewController: UIInputViewController {
         // カーソル移動と同じく、2.2mmで1文字ぶん
         let steps = Int((dx / (2.2 * CGFloat(KeyboardSettings.ptPerMM))).rounded())
         if composer.setRangeLength(rangeStartLength + steps) {
-            traceRange("ドラッグ: 範囲=\(composer.rangeLength)文字")
             showMarked(composer.markedText, highlight: composer.markedHighlight)
         }
     }
 
     /// 範囲選択は入力欄の表示（全体の変換待ち＋範囲の選択表示）の中だけで完結させる（v0.37.35〜）
 
-    /// 範囲選択の一連の動きの記録（切り分け用。「変換の診断」の末尾に出す）。
-    /// v0.37.30: メモリだけだとキーボードのプロセスが再起動したときに消えるので、共有の保存先に残す
-    private static let rangeTraceKey = "DuoFlick.rangeTrace"
-    private func traceRange(_ s: String) {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss.SSS"
-        var lines = SharedStore.defaults.stringArray(forKey: Self.rangeTraceKey) ?? []
-        lines.append("\(f.string(from: Date())) \(s)")
-        if lines.count > 40 { lines.removeFirst(lines.count - 40) }
-        SharedStore.defaults.set(lines, forKey: Self.rangeTraceKey)
-    }
-    private var savedRangeTrace: [String] {
-        SharedStore.defaults.stringArray(forKey: Self.rangeTraceKey) ?? []
-    }
-    private func proxyContext(_ proxy: UITextDocumentProxy) -> String {
-        "前[\(proxy.documentContextBeforeInput ?? "nil")] 後[\(proxy.documentContextAfterInput ?? "nil")] hasText=\(proxy.hasText)"
-    }
-
-    /// 範囲選択の指を離した：範囲はそのままで、帯に範囲だけの候補を出す。
-    /// 範囲の後ろは未変換のまま一度確定して文書に入れ、入力欄では範囲だけが変換中（下線）で残るようにする
+    /// 範囲選択の指を離した：範囲はそのままで、帯に範囲だけの候補を出す
     private func rangePressEnded() {
-        guard composer.rangeMode else {
-            traceRange("離す: 範囲モードでないため何もしない")
-            return
-        }
+        guard composer.rangeMode else { return }
+        // ドラッグ中は変換していないので、離したここで範囲の候補を引き直す（v0.37.41、案4）
+        composer.refreshRangeCandidates()
         // 離しても範囲選択はそのまま続ける。入力欄には読み全体が変換待ちで残り、
         // 範囲の部分だけが選択されて見える（文書への特別な操作はしない。v0.37.35）
         updateComposition()
-        traceRange("離す: 範囲=\(composer.rangeLength)文字（範囲選択を継続）")
     }
 
     private func commitCandidate(_ index: Int) {
+        guard let item = composer.item(at: index) else { return }
+        commitCandidate(item)
+    }
+
+    private func commitCandidate(_ item: Composer.DisplayItem) {
         // ライブ変換で文節を選び直している途中は、確定せず、その文節を入れ替える
-        if composer.chooseClauseAlt(index) {
+        if composer.chooseClauseAlt(item: item) {
             updateComposition()
             return
         }
         let reading = composer.reading
-        guard let text = composer.commit(candidateAt: index) else { return }
+        guard let text = composer.commit(item: item) else { return }
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
         insertCommitted(text)
         if composer.isEmpty {
@@ -1727,10 +1723,7 @@ final class KeyboardViewController: UIInputViewController {
                 self.composer.zenzai = self.model.settings.zenzai
                 self.composer.zenzaiHigh = self.model.settings.zenzaiHigh
                 self.updateLeftContext()
-                var d = self.composer.diagnostics()
-                let lines = self.savedRangeTrace
-                d += "\n— 範囲選択の記録 —\n" + (lines.isEmpty ? "（まだ記録なし）" : lines.joined(separator: "\n"))
-                return d
+                return self.composer.diagnostics()
             },
             offsetText: { [weak self] in self?.keyboardView.offsetDescription ?? "" },
             onResetOffset: { [weak self] in self?.keyboardView.resetOffset() },
