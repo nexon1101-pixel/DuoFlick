@@ -985,21 +985,26 @@ final class KeyboardViewController: UIInputViewController {
     private func scheduleCandidates() {
         candidateWork?.cancel()
         guard composer.needsRefresh else { return }
-        composer.zenzai = model.settings.zenzai
-        composer.zenzaiHigh = model.settings.zenzaiHigh
-        updateLeftContext()
         let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.composer.refreshIfNeeded()
-            self.refreshBar()
-            // ライブ変換：変換が済んだら、入力欄の下線の文字を変換した形に入れ替える
-            if self.model.settings.liveConversion, !self.composer.isEmpty, self.markedActive {
-                let t = self.composer.markedText
-                if t != self.shownMarked { self.showMarked(t, highlight: self.composer.markedHighlight) }
-            }
+            self?.runPendingRefresh()
         }
         candidateWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+    }
+
+    /// 変換の追いつきを今すぐ行う（scheduleCandidates のデバウンスの本体。
+    /// 一覧を開くときにも使う）
+    private func runPendingRefresh() {
+        composer.zenzai = model.settings.zenzai
+        composer.zenzaiHigh = model.settings.zenzaiHigh
+        updateLeftContext()
+        composer.refreshIfNeeded()
+        refreshBar()
+        // ライブ変換：変換が済んだら、入力欄の下線の文字を変換した形に入れ替える
+        if model.settings.liveConversion, !composer.isEmpty, markedActive {
+            let t = composer.markedText
+            if t != shownMarked { showMarked(t, highlight: composer.markedHighlight) }
+        }
     }
 
     /// 入力中は変換候補、確定直後は予測、それ以外は何も出さない
@@ -1083,8 +1088,14 @@ final class KeyboardViewController: UIInputViewController {
 
     private func toggleCandidateList() {
         if isCandidateListOpen { closeCandidateList(); return }
-        // 開くときに変換を待たない。今ある候補のスナップショットで即開く
-        // （以前は同期変換を待ってから開いていて、長い読みでは∧のタップが後ろに溜まっていた）
+        // 変換がまだ追いついていないときだけ、開く前に同期で追いつかせる。
+        // v0.37.41 で開くときの追いつきを全面的に外したところ、打鍵直後の
+        // 1回目のオープンで変換前の候補（または空）が出て「読み込みのラグ」と
+        // 感じられた（実機報告 2026-11-15）。追いついているときは即開く。
+        if composer.needsRefresh {
+            candidateWork?.cancel()
+            runPendingRefresh()
+        }
         listItems = Array(composer.currentItems.prefix(120))
         candidateListView.setItems(listItems.map(\.text))
         openCandidateList()
