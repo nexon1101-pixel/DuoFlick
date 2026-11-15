@@ -60,6 +60,8 @@ final class Composer {
     }
 
     private var converterReady = false
+    /// 本線の変換をもう走らせたか（予熱と競合させないための印）
+    private var didRealConversion = false
     private lazy var converter: KanaKanjiConverter = {
         let c = KanaKanjiConverter()
         c.sendToDicdataStore(.setRequestOptions(options))
@@ -87,6 +89,23 @@ final class Composer {
             metadata: .init(versionString: "DuoFlick")
         )
     }()
+
+    /// 変換エンジンを作っておく（本体のスレッドから呼ぶ。lazy の初期化を競合させないため）
+    func prepareConverter() { _ = converter }
+
+    /// 変換エンジンとAIモデルを先に読み込んでおく（初回の変換で読み込むと、
+    /// その間キーも候補も反応しなくなるため。v0.37.44）。裏のキューから呼ぶ。
+    /// 打ち始めたあとは、本線の変換と競合するので何もしない
+    func warmUp(zenzai z: Bool, high: Bool) {
+        _ = converter
+        guard z, !didRealConversion, let url = Self.zenzURL(high: high) else { return }
+        var ct = ComposingText()
+        ct.insertAtCursorPosition("あ", inputStyle: .direct)
+        var o = options
+        o.zenzaiMode = .on(weight: url, inferenceLimit: 1, personalizationMode: nil,
+                           versionDependentMode: .v3(.init(leftSideContext: nil)))
+        _ = converter.requestCandidates(ct, options: o)
+    }
 
     private func importUserWords() {
         importUserWords(into: converter)
@@ -799,14 +818,16 @@ final class Composer {
             reset()
             return text
         }
-        // 古い候補のガード：候補が覆う読み（カタカナ）が、いまの読みの先頭と一致すること
-        let covered = readingKey(c)
-        if covered.isEmpty {
-            // 読みを持たない候補は、いまの表示リストに同じものがあるときだけ確定する
-            guard displayItems.contains(where: { $0.candidate?.text == c.text && $0.candidate?.rubyCount == c.rubyCount })
-            else { return nil }
-        } else {
-            guard Self.katakana(composing.convertTarget).hasPrefix(covered) else { return nil }
+        // いまの表示リストにある候補は、そのまま確定する。変換エンジンの候補は
+        // ルビの表記が読みとそろわないことがあり、覆う読みの照合で弾くと、
+        // commitAll の側で読みのまま（ひらがな）に化けた（v0.37.44 で修正）
+        let inCurrent = displayItems.contains { $0.candidate?.text == c.text && $0.candidate?.rubyCount == c.rubyCount }
+        if !inCurrent {
+            // 古い候補のガード：候補が覆う読みが、いまの読みの先頭と一致すること
+            // （ルビはカタカナにそろえて比べる。読みを持たない候補は捨てる）
+            let covered = readingKey(c)
+            guard !covered.isEmpty,
+                  Self.katakana(composing.convertTarget).hasPrefix(Self.katakana(covered)) else { return nil }
         }
         composing.prefixComplete(composingCount: c.composingCount)
         selectedIndex = nil
@@ -1274,6 +1295,7 @@ final class Composer {
     }
 
     private func refresh() {
+        didRealConversion = true
         needsRefresh = false
         guard !composing.isEmpty else {
             candidates = []

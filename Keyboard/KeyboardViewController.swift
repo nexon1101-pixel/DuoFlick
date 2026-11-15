@@ -145,6 +145,13 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return }
             self.composer.userWords = self.dictionary.words
         }
+        // 変換エンジンとAIモデルの読み込みを先に済ませておく（初回の変換で読み込むと、
+        // その間キーも候補も反応しなくなるため。v0.37.44）
+        composer.prepareConverter()
+        let wz = model.settings.zenzai, wh = model.settings.zenzaiHigh
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.composer.warmUp(zenzai: wz, high: wh)
+        }
         model.onChange = { [weak self] s in
             guard let self else { return }
             self.keyboardView.grip = self.model.grip
@@ -166,6 +173,8 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.grip = model.grip
         dictionary.reload()
         phrases.reload()
+        // 変換待ちの復帰は、文字種の初期化（確定を伴うことがある）より前に確かめる
+        resumeComposition()
         applyKeyboardType()
         haptic.prepare()
         flickHaptic.prepare()
@@ -213,8 +222,61 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillDisappear(animated)
         clipboardTimer?.invalidate()
         clipboardTimer = nil
-        commitAll()
+        // 変換待ちは確定せずに残す（標準のキーボードと同じく、下線の文字は入力欄に残る）。
+        // 以前はここで全部確定していたが、確定が入力欄に届かない閉じ方だと変換待ちだけ
+        // 消えて、開き直したときに文字ごと消えた（v0.37.44 で変更）
+        savePendingComposition()
         composer.save()
+    }
+
+    // MARK: - 変換待ちの保存と復帰（閉じても、開き直せば続きを打てるように）
+
+    private static let pendingCompositionKey = "DuoFlick.pendingComposition"
+
+    /// 変換待ちの読みと、下線で出している文字を覚えておく（プロセスが作り直されても戻せるように）
+    private func savePendingComposition() {
+        if composer.isEmpty {
+            clearPendingComposition()
+        } else {
+            SharedStore.defaults.set([composer.reading, shownMarked], forKey: Self.pendingCompositionKey)
+        }
+    }
+
+    private func savedPendingComposition() -> (reading: String, marked: String)? {
+        guard let a = SharedStore.defaults.stringArray(forKey: Self.pendingCompositionKey),
+              a.count == 2, !a[0].isEmpty else { return nil }
+        return (a[0], a[1])
+    }
+
+    private func clearPendingComposition() {
+        SharedStore.defaults.removeObject(forKey: Self.pendingCompositionKey)
+    }
+
+    /// 開き直したとき、変換待ちが入力欄に残っているか確かめる。
+    /// 残っていれば続きを打てるようにし、残っていなければ（送信された・別の入力欄など）捨てる
+    private func resumeComposition() {
+        let proxy = textDocumentProxy
+        let before = proxy.documentContextBeforeInput ?? ""
+        if !composer.isEmpty {
+            // プロセスが生きていて、変換待ちが残っている場合：
+            // 入力欄の文脈の末尾に下線の文字が残っているときだけ続ける。
+            // それ以外（送信された・別の入力欄・カーソルが動いた等）は、変換待ちを捨てる
+            if !shownMarked.isEmpty, before.hasSuffix(shownMarked) { return }
+            composer.reset()
+            markedActive = false
+            markedVisible = false
+            clearPendingComposition()
+            return
+        }
+        // プロセスが作り直されていた場合：覚えておいた読みを、入力欄に下線の文字が
+        // 残っているときだけ戻す（文脈で確かめられない入力欄では戻さない）
+        guard let saved = savedPendingComposition() else { return }
+        if !saved.marked.isEmpty, before.hasSuffix(saved.marked) {
+            composer.restore(reading: saved.reading)
+            updateComposition()
+        } else {
+            clearPendingComposition()
+        }
     }
 
     override func viewWillLayoutSubviews() {
@@ -255,6 +317,7 @@ final class KeyboardViewController: UIInputViewController {
             if !self.composer.isEmpty {
                 if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty, !proxy.hasText {
                     self.composer.reset()
+                    self.clearPendingComposition()
                     self.markedActive = false
                     self.markedVisible = false
                     self.lastCommit = nil
@@ -942,6 +1005,9 @@ final class KeyboardViewController: UIInputViewController {
     private func insertCommitted(_ text: String) {
         textDocumentProxy.insertText(text)
         markedActive = false
+        // 確定したら、閉じたとき用の変換待ちの保存は消す（部分確定のときは、
+        // このあとの updateComposition で残りの読みが保存し直される）
+        clearPendingComposition()
         // 括弧の対だけを確定したときは、中にカーソルを置く（続きの変換が残っているときは動かさない）
         cursorInsidePair = false
         if composer.isEmpty, text.count == 2, Self.pairTexts.contains(text) {
@@ -973,6 +1039,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         refreshBar()
         scheduleCandidates()
+        savePendingComposition()
     }
 
     /// 確定の文字を先に入れてから、次の予測を計算する
