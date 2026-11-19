@@ -897,7 +897,7 @@ final class KeyboardViewController: UIInputViewController {
         if pos != startPos { proxy.adjustTextPosition(byCharacterOffset: pos - startPos) }
     }
 
-    // MARK: - 入力欄への反映（本家 azooKey と同じく、確定は insertText で下線付きの文字を置き換える）
+    // MARK: - 入力欄への反映（確定は、下線付きの文字を先に消してから insertText で入れる。v0.37.47〜）
 
     /// 入力欄に下線付きの文字があるか
     private var markedActive = false
@@ -931,6 +931,12 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 下線付きの文字を、確定した文字で置き換える
     private func insertCommitted(_ text: String) {
+        // 一部のアプリは insertText での下線付き文字の置き換えをしてくれず、読みを
+        // 残したまま確定文字を後ろにくっつける（「せきゅ」＋「セキュリティ」になる）。
+        // 置き換えをアプリ任せにせず、下線付きの文字は先にこちらで消してから入れる
+        if markedActive {
+            clearMarked()
+        }
         textDocumentProxy.insertText(text)
         markedActive = false
         // 括弧の対だけを確定したときは、中にカーソルを置く（続きの変換が残っているときは動かさない）
