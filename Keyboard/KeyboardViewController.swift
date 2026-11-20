@@ -927,21 +927,10 @@ open class KeyboardViewController: UIInputViewController {
         // 一部のアプリは insertText での下線付き文字の置き換えをしてくれず、読みを
         // 残したまま確定文字を後ろにくっつける（「せきゅ」＋「セキュリティ」になる）。
         // 置き換えをアプリ任せにせず、下線付きの文字は先にこちらで消してから入れる
-        if markedActive, composer.isEmpty {
-            // 全部の確定のときは、消すのではなく、下線付きの文字の中身を確定文字に
-            // 差し替えてから確定する（v0.37.53）。setMarkedText("") の消去は対象の
-            // アプリが無視したが、打鍵中の下線の書き換え（中身のある setMarkedText）は
-            // 聞いているので、差し替えなら通るはず。部分確定（残りが続くとき）は、
-            // 残りを下線付きで残す必要があるので、今までの消して入れる方式のまま
-            textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
-            textDocumentProxy.unmarkText()
-            shownMarked = ""
-        } else {
-            if markedActive {
-                clearMarked()
-            }
-            textDocumentProxy.insertText(text)
+        if markedActive {
+            clearMarked()
         }
+        textDocumentProxy.insertText(text)
         markedActive = false
         // 括弧の対だけを確定したときは、中にカーソルを置く（続きの変換が残っているときは動かさない）
         cursorInsidePair = false
