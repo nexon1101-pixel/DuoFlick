@@ -53,7 +53,7 @@ open class KeyboardViewController: UIInputViewController {
     /// 直前に確定した文字と読み（↺で取り消すため）
     private var lastCommit: (text: String, reading: String)?
 
-    override func viewDidLoad() {
+    open override func viewDidLoad() {
         super.viewDidLoad()
         // 背景はiOS標準のキーボード背景（角の丸い枠）をそのまま使う
         view.backgroundColor = .clear
@@ -149,7 +149,7 @@ open class KeyboardViewController: UIInputViewController {
         refreshBar()
     }
 
-    override func viewWillAppear(_ animated: Bool) {
+    open override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         view.transform = .identity
         view.alpha = 1
@@ -200,7 +200,7 @@ open class KeyboardViewController: UIInputViewController {
         model.settings = s
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
+    open override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         clipboardTimer?.invalidate()
         clipboardTimer = nil
@@ -208,7 +208,7 @@ open class KeyboardViewController: UIInputViewController {
         composer.save()
     }
 
-    override func viewWillLayoutSubviews() {
+    open override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
         // 外側画面と内側画面で、別々の設定を使う
         if view.bounds.width > 0 {
@@ -217,7 +217,7 @@ open class KeyboardViewController: UIInputViewController {
         updateHeight(force: false)
     }
 
-    override func textDidChange(_ textInput: (any UITextInput)?) {
+    open override func textDidChange(_ textInput: (any UITextInput)?) {
         super.textDidChange(textInput)
         applyKeyboardType()
         updateKeyLabels()
@@ -1264,7 +1264,7 @@ open class KeyboardViewController: UIInputViewController {
         }
     }
 
-    override func viewDidLayoutSubviews() {
+    open override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         // 外側→内側など画面が切り替わった直後は、パネルの位置が古いまま残って
         // ⌫などのキーを覆うことがあるので、覚えている範囲に合わせ直す
