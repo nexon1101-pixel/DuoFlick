@@ -927,11 +927,19 @@ open class KeyboardViewController: UIInputViewController {
         // 一部のアプリは insertText での下線付き文字の置き換えをしてくれず、読みを
         // 残したまま確定文字を後ろにくっつける（「せきゅ」＋「セキュリティ」になる）。
         // 置き換えをアプリ任せにせず、下線付きの文字は先にこちらで消してから入れる
+        // 確定前の文脈と下線の表示を覚えておく（確定後の重複チェックに使う。v0.37.55）
+        let hadMarked = markedActive
+        let markedShown = shownMarked
+        let contextBefore = textDocumentProxy.documentContextBeforeInput
         if markedActive {
             clearMarked()
         }
         textDocumentProxy.insertText(text)
         markedActive = false
+        // 全部の確定のときだけ、重複になっていないか少し待ってから確かめる
+        if hadMarked, composer.isEmpty, !markedShown.isEmpty, !text.isEmpty, let contextBefore {
+            scheduleDuplicationRepair(contextBefore: contextBefore, markedShown: markedShown, committed: text)
+        }
         // 括弧の対だけを確定したときは、中にカーソルを置く（続きの変換が残っているときは動かさない）
         cursorInsidePair = false
         if composer.isEmpty, text.count == 2, Self.pairTexts.contains(text) {
@@ -1129,6 +1137,34 @@ open class KeyboardViewController: UIInputViewController {
     private func selectFromCandidateList(_ index: Int) {
         closeCandidateList()
         commitCandidate(index)
+    }
+
+    /// 確定したあと、入力欄が「下線の表示＋確定文字」の重複になっていたら直す（v0.37.55）。
+    /// 置き換えも、setMarkedText の消去も差し替えも聞かない入力欄向けの最後の手。
+    /// 下線付きの文字には触らず、確定済みの文字だけを消して入れ直すので、
+    /// 重複がはっきり確認できたとき以外は何もしない
+    private func scheduleDuplicationRepair(contextBefore: String, markedShown: String, committed: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, self.composer.isEmpty, !self.markedActive else { return }
+            let p = self.textDocumentProxy
+            guard let c1 = p.documentContextBeforeInput else { return }
+            // 正常な確定なら、文脈は「下線ぶんが確定文字に置き換わった形」になる。
+            // 重複しているときは、下線ぶんがそのまま残って後ろに確定文字が付いている
+            let broken: String
+            let healthy: String
+            if contextBefore.hasSuffix(markedShown) {
+                broken = contextBefore + committed
+                healthy = String(contextBefore.dropLast(markedShown.count)) + committed
+            } else {
+                broken = contextBefore + markedShown + committed
+                healthy = contextBefore + committed
+            }
+            guard c1 == broken, c1 != healthy else { return }
+            for _ in 0..<(markedShown.count + committed.count) {
+                p.deleteBackward()
+            }
+            p.insertText(committed)
+        }
     }
 
     /// 「@」のあとに出す、よく使うメールのドメイン
