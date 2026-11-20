@@ -922,26 +922,13 @@ open class KeyboardViewController: UIInputViewController {
         markedActive = false
     }
 
-    /// 下線付きの文字を、⌫キーと同じ削除で1文字ずつ消す
-    /// （v0.37.47 の setMarkedText("") で消す方式は、対象のアプリがその指示を無視していて
-    /// 効かなかった。本人確認 2026-11-20。削除は通常のバックスペースと同じ操作なので、
-    /// それが効くアプリならこちらも効くはず）
-    private func eraseMarked() {
-        guard markedActive else { return }
-        if shownMarked.isEmpty { clearMarked(); return }
-        for _ in 0..<shownMarked.count { textDocumentProxy.deleteBackward() }
-        textDocumentProxy.unmarkText()
-        markedActive = false
-        shownMarked = ""
-    }
-
     /// 下線付きの文字を、確定した文字で置き換える
     private func insertCommitted(_ text: String) {
         // 一部のアプリは insertText での下線付き文字の置き換えをしてくれず、読みを
         // 残したまま確定文字を後ろにくっつける（「せきゅ」＋「セキュリティ」になる）。
         // 置き換えをアプリ任せにせず、下線付きの文字は先にこちらで消してから入れる
         if markedActive {
-            eraseMarked()
+            clearMarked()
         }
         textDocumentProxy.insertText(text)
         markedActive = false
