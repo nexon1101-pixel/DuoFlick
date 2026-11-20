@@ -27,22 +27,8 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      # Zenzai（AIモデル）のモデルを取り込む。ファイルはリポジトリに置かず、ビルドのたびに取得する
-      - name: Download Zenzai model
-        run: |
-          for m in xsmall small; do
-            mkdir -p Keyboard/Zenz/$m
-            curl -L --fail --retry 3 -o Keyboard/Zenz/$m/ggml-model-Q5_K_M.gguf \
-              https://huggingface.co/Miwa-Keita/zenz-v3.1-$m-gguf/resolve/main/ggml-model-Q5_K_M.gguf
-            ls -l Keyboard/Zenz/$m
-            test "$(stat -f%z Keyboard/Zenz/$m/ggml-model-Q5_K_M.gguf)" -gt 10000000
-          done
-
       - name: Generate Xcode project
-        run: |
-          xcodegen generate
-          # パッケージの trait（Zenzai）が、生成したプロジェクトに入っているか確かめる
-          grep -c "Zenzai" DuoFlick.xcodeproj/project.pbxproj || { echo "::error::Zenzai の trait がプロジェクトに入っていません"; exit 1; }
+        run: xcodegen generate
 
       # 前回のビルド結果（パッケージの取得と、変えていない部分のコンパイル）を使い回して、ビルド時間を短くする
       - name: Restore build cache
@@ -52,39 +38,6 @@ jobs:
           key: deriv27-${{ github.run_id }}
           restore-keys: |
             deriv27-
-
-      # AIモデル（Zenzai）を、GPU（Metal）でなく CPU だけで動かすよう、取得したパッケージを書き換える。
-      # キーボード拡張では GPU が使えず、推論が失敗して、AIが何もしなかったため（azooKey 本体も、キーボードでは CPU だけ）
-      - name: Patch package (Zenzai on CPU only)
-        run: |
-          set +e
-          xcodebuild -resolvePackageDependencies \
-            -project DuoFlick.xcodeproj -scheme DuoFlick -derivedDataPath build > resolve.log 2>&1
-          echo "resolve exit: $?"
-          grep -E "error|warning: " resolve.log | head -5 | while IFS= read -r l; do echo "::warning::resolve: ${l:0:300}"; done
-          F=$(find build -name ZenzContext.swift 2>/dev/null | head -1)
-          if [ -z "$F" ]; then
-            echo "::error::ZenzContext.swift が見つかりません。build の中身: $(ls build | tr '\n' ' ') / SourcePackages: $(ls build/SourcePackages 2>&1 | tr '\n' ' ') / checkouts: $(ls build/SourcePackages/checkouts 2>&1 | tr '\n' ' ')"
-            exit 1
-          fi
-          echo "patch target: $F"
-          chmod -R u+w build/SourcePackages/checkouts   # パッケージの取得先は読み取り専用
-          python3 - "$F" <<'PY'
-          import sys
-          p = sys.argv[1]
-          s = open(p, encoding="utf-8").read()
-          if "n_gpu_layers = 0" not in s:
-              a = "model_params.use_mmap = true"
-              b = "ctx_params.n_batch = 512"
-              if a not in s or b not in s:
-                  print("::error::パッチの目印が見つかりません")
-                  sys.exit(1)
-              s = s.replace(a, a + "\n        model_params.n_gpu_layers = 0", 1)
-              s = s.replace(b, b + "\n        ctx_params.offload_kqv = false", 1)
-              open(p, "w", encoding="utf-8").write(s)
-          PY
-          [ $? -eq 0 ] || exit 1
-          grep -n "n_gpu_layers\|offload_kqv" "$F" || { echo "::error::パッチが入っていません"; exit 1; }
 
       - name: Build (unsigned)
         run: |
@@ -99,7 +52,6 @@ jobs:
             -derivedDataPath build \
             -skipPackagePluginValidation \
             -skipMacroValidation \
-            -disableAutomaticPackageResolution \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \

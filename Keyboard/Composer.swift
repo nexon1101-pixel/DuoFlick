@@ -82,213 +82,22 @@ final class Composer {
         String(composing.convertTarget.dropFirst(composing.convertTargetCursorPosition))
     }
 
-    // MARK: - ライブ変換
-
-    /// ライブ変換：入力中の文字を、ひらがなではなく変換した形で出す。中身（読み）は今までどおりひらがなで持つ
-    var liveConversion = false
-    /// AIモデル（Zenzai）で変換するか。モデルのファイルがあるときだけ働く
-    var zenzai = false
-    /// カーソルより前の文章（Zenzai に文脈として渡す）
-    var leftContext = ""
-    /// 直近の変換で、AIに渡した文脈（診断用）
-    private(set) var lastZenzContext: String? = nil
-    /// 大きいモデル（small）を使うか
-    var zenzaiHigh = false
-    private static func zenzURL(high: Bool) -> URL? {
-        let dir = high ? "small" : "xsmall"
-        let u = Bundle.main.bundleURL.appendingPathComponent("Zenz/\(dir)/ggml-model-Q5_K_M.gguf", isDirectory: false)
-        if FileManager.default.fileExists(atPath: u.path) { return u }
-        // 大きいモデルがないときは、小さいモデルを使う
-        let small = Bundle.main.bundleURL.appendingPathComponent("Zenz/xsmall/ggml-model-Q5_K_M.gguf", isDirectory: false)
-        return FileManager.default.fileExists(atPath: small.path) ? small : nil
-    }
-    /// いまの設定を反映した、変換のときの設定
+    /// 変換のときの設定
     private func requestOptionsForConvert() -> ConvertRequestOptions {
-        var o = options
-        if zenzai { lastZenzContext = leftContext }   // 診断で見せる（実際の変換で渡した文脈）
-        if zenzai, let url = Self.zenzURL(high: zenzaiHigh) {
-            o.zenzaiMode = .on(
-                weight: url,
-                inferenceLimit: 10,
-                personalizationMode: nil,
-                versionDependentMode: .v3(.init(leftSideContext: leftContext.isEmpty ? nil : leftContext))
-            )
-        }
-        return o
+        options
     }
 
-    /// 変換した文を文節に分けたもの
-    struct LiveClause {
-        var reading: String
-        var text: String
-        var candidate: Candidate
-        /// 選び直した候補（選んでいなければ nil）
-        var chosen: Candidate?
-        var shown: String { chosen?.text ?? text }
-    }
-    private(set) var liveClauses: [LiveClause] = []
-    /// liveClauses を作ったときの読み
-    private var liveReading = ""
-    /// 空白の長押しで、変換せずひらがなのまま見せている間
-    private(set) var readingMode = false
-    /// 文全体の先頭の候補が candidates の何番目か
-    private var liveBestIndex = 0
-    /// 選び直している文節の番号（nil なら文全体）
-    private(set) var focusClause: Int?
-    /// 選び直している文節の候補（0番目は元の候補）
-    private var clauseAlts: [Candidate] = []
-
-    /// いまの読みで、変換した形を出せるか（打ちたての分は、あとに足して出す）
-    private var liveUsable: Bool {
-        liveConversion && !isSegmented && !liveClauses.isEmpty && composing.convertTarget.hasPrefix(liveReading)
-    }
-
-    /// 先頭の候補を文節に分ける（エンジンの makePrefixClauseCandidate で、先頭の文節を取り出すのを繰り返す）
-    private func buildLive() {
-        liveClauses = []
-        liveReading = ""
-        focusClause = nil
-        clauseAlts = []
-        guard liveConversion, !isSegmented else { return }
-        let reading = composing.convertTarget
-        let chars = Array(reading)
-        guard !chars.isEmpty,
-              let bi = candidates.firstIndex(where: { $0.rubyCount == chars.count && !$0.data.isEmpty }) else { return }
-        var rest = candidates[bi].data[...]
-        var pos = 0
-        var out: [LiveClause] = []
-        while !rest.isEmpty {
-            var c = Candidate.makePrefixClauseCandidate(data: rest)
-            if c.data.isEmpty {
-                c = Candidate(text: rest.map(\.word).joined(), value: -5,
-                              composingCount: .surfaceCount(rest.reduce(0) { $0 + $1.ruby.count }),
-                              lastMid: 501, data: Array(rest))
-            }
-            let n = c.data.reduce(0) { $0 + $1.ruby.count }
-            guard n > 0, pos + n <= chars.count else { return }
-            out.append(LiveClause(reading: String(chars[pos..<pos + n]), text: c.text, candidate: c, chosen: nil))
-            pos += n
-            rest = rest.dropFirst(c.data.count)
-        }
-        guard pos == chars.count else { return }
-        // 読みが1文字のときは、ライブ変換しない（ひらがなのまま見せる。「を」→「ヺ」のような変な形も防ぐ）
-        if chars.count == 1 { return }
-        liveClauses = out
-        liveReading = reading
-        liveBestIndex = bi
-    }
-
-    /// ライブ変換で使う読み（文節を選び直している間は、その文節の読み）。
-    /// 帯への読み表示は v0.37.38 で廃止したので、これは変換内部の判定用
+    /// 範囲選択中の、範囲の読み（範囲選択でないときは nil）
     var readingLabel: String? {
-        // 範囲選択中は、ライブ変換でなくても範囲の読みを出す（どこまでが変換対象か分かるように）
         if rangeMode, !composing.isEmpty { return rangeReading }
-        guard liveConversion, !composing.isEmpty else { return nil }
-        if let k = focusClause, k < liveClauses.count { return liveClauses[k].reading }
-        return composing.convertTarget
+        return nil
     }
 
-    /// 読みのひらがなのまま確定する（帯の左端の読みを押したとき）。文節を選び直している間は、その文節だけひらがなにする。
-    /// 文節の場合は nil（確定はしない）
-    func commitReadingAsIs() -> String? {
-        guard liveConversion, !composing.isEmpty else { return nil }
-        if focusClause != nil {
-            if let i = clauseAlts.firstIndex(where: { $0.text == readingLabel }) { _ = chooseClauseAlt(i) }
-            return nil
-        }
-        let text = composing.convertTarget
-        reset()
-        return text
-    }
-
-    /// 変換せず、読みのひらがなのまま見せる（空白の長押し）。確定はしない
-    func showReadingOnly() {
-        guard !composing.isEmpty else { return }
-        readingMode = true
-        selectedIndex = nil
-        focusClause = nil
-    }
-
-    /// 選び直している文節を、入力欄の下線の文字の中で選択して見せる範囲
+    /// 範囲選択中に、入力欄の下線の文字の中で選択して見せる範囲
     var markedHighlight: NSRange? {
-        if rangeMode {
-            // 範囲選択：先頭から範囲ぶんを選択状態に見せる（アプリが描く場合の補助）
-            if liveUsable { return NSRange(location: 0, length: ((rangeCandidates.first?.text ?? rangeReading) as NSString).length) }
-            return NSRange(location: 0, length: (rangeShownPrefix as NSString).length)
-        }
-        guard let k = focusClause, liveUsable, k < liveClauses.count else { return nil }
-        let before = liveClauses[..<k].map(\.shown).joined()
-        return NSRange(location: (before as NSString).length, length: (liveClauses[k].shown as NSString).length)
-    }
-
-    /// 文節の選び直し：→（空白の長押しの右）で右の文節へ、空白の長押しの左で左の文節へ。最初は先頭（左へなら末尾）の文節
-    private func moveClauseFocus(_ count: Int) {
-        let n = liveClauses.count
-        let next: Int
-        if let k = focusClause {
-            next = min(max(k + count, 0), n - 1)
-        } else {
-            next = count > 0 ? 0 : n - 1
-        }
-        guard next != focusClause else { return }
-        focusClause = next
-        loadClauseAlts()
-    }
-
-    /// 選び直す文節の候補を集める（その文節の読みだけを変換する）
-    private func loadClauseAlts() {
-        guard let k = focusClause, k < liveClauses.count else { return }
-        let cl = liveClauses[k]
-        var ct = ComposingText()
-        ct.insertAtCursorPosition(cl.reading, inputStyle: .direct)
-        var o = options
-        o.needTypoCorrection = false
-        let found = converter.requestCandidates(ct, options: o).mainResults
-        var list: [Candidate] = [cl.candidate]
-        var seen: Set<String> = [cl.candidate.text]
-        let n = cl.reading.count
-        for c in found where c.rubyCount == n && !seen.contains(c.text) {
-            seen.insert(c.text)
-            list.append(c)
-            if list.count >= 40 { break }
-        }
-        // 変換エンジンの候補にないとき用に、ひらがなとカタカナも足す
-        for t in [cl.reading, Self.katakana(cl.reading)] where !seen.contains(t) {
-            seen.insert(t)
-            list.append(Candidate(text: t, value: -20, composingCount: .surfaceCount(n), lastMid: 501,
-                                  data: [DicdataElement(word: t, ruby: Self.katakana(cl.reading),
-                                                        cid: CIDData.固有名詞.cid, mid: MIDData.一般.mid, value: -20)]))
-        }
-        clauseAlts = list
-        if let ch = cl.chosen, let i = list.firstIndex(where: { $0.text == ch.text }) {
-            selectedIndex = i
-        } else {
-            selectedIndex = 0
-        }
-    }
-
-    /// 選び直している文節の候補を選ぶ。選び直しの最中でなければ false
-    func chooseClauseAlt(_ i: Int) -> Bool {
-        guard let k = focusClause, k < liveClauses.count, i >= 0, i < clauseAlts.count else { return false }
-        selectedIndex = i
-        liveClauses[k].chosen = i == 0 ? nil : clauseAlts[i]
-        return true
-    }
-
-    /// 文節を選び直した結果も含めて、全部確定する
-    private func commitLive() -> String {
-        var out = liveClauses.map(\.shown).joined()
-        // 変換が追いついていない打ちたての分は、そのまま足す
-        out += String(composing.convertTarget.dropFirst(liveReading.count))
-        for cl in liveClauses {
-            converter.updateLearningData(cl.chosen ?? cl.candidate)
-            if let ch = cl.chosen { remember(ch) }
-        }
-        scheduleSave()
-        let last = liveClauses.last.map { $0.chosen ?? $0.candidate }
-        reset()
-        if let last { startPredictions(after: last) }
-        return out
+        guard rangeMode else { return nil }
+        // 範囲選択：先頭から範囲ぶんを選択状態に見せる（アプリが描く場合の補助）
+        return NSRange(location: 0, length: (rangeShownPrefix as NSString).length)
     }
 
     /// 帯の番号（変換エンジンの候補の番号から、入れた候補の分だけずれる）
@@ -299,32 +108,28 @@ final class Composer {
 
     /// 入力欄に下線付きで表示する文字
     var markedText: String {
-        if readingMode { return composing.convertTarget }
-        if rangeMode, !liveUsable {
+        if rangeMode {
             // 範囲だけを読みのまま（＝変換中）で見せ、後ろは仮で変換した形にする。
             // 選択範囲の描画はアプリ次第で当てにならないので、文字そのもので対象を示す
             return rangeShownPrefix + rangeRemainderText
         }
-        if focusClause == nil, let i = selectedIndex, i < displayCount {
+        if let i = selectedIndex, i < displayCount {
             if let ci = candidateIndex(forDisplay: i) {
                 return candidates[ci].text + readingAfterSegment
             }
             return extraText(forDisplay: i) ?? composing.convertTarget
-        }
-        if liveUsable {
-            return liveClauses.map(\.shown).joined() + String(composing.convertTarget.dropFirst(liveReading.count))
         }
         return composing.convertTarget
     }
 
     var candidateTexts: [String] {
         if rangeMode { return rangeCandidates.map(\.text) }
-        return focusClause != nil ? clauseAlts.map(\.text) : withExtra(candidates.map(\.text))
+        return withExtra(candidates.map(\.text))
     }
     /// 一覧に出す候補（多すぎると重いので200個まで）
     var listTexts: [String] {
         if rangeMode { return rangeCandidates.map(\.text) }
-        return focusClause != nil ? clauseAlts.map(\.text) : withExtra(candidates.prefix(200).map(\.text))
+        return withExtra(candidates.prefix(200).map(\.text))
     }
 
     // MARK: - 英字の候補（ローマ字かな入力で、打った英字のまま入れたいとき）
@@ -425,12 +230,12 @@ final class Composer {
 
     private var displayCount: Int {
         if rangeMode { return rangeCandidates.count }
-        return focusClause != nil ? clauseAlts.count : candidates.count + extras.count
+        return candidates.count + extras.count
     }
 
     /// 帯の番号から変換候補の番号を求める（入れた候補なら nil）
     private func candidateIndex(forDisplay i: Int) -> Int? {
-        guard focusClause == nil, !extras.isEmpty else { return i }
+        guard !extras.isEmpty else { return i }
         let p = min(extraAt, candidates.count)
         if i < p { return i }
         if i < p + extras.count { return nil }
@@ -655,13 +460,6 @@ final class Composer {
             exitRangeMode()
             return
         }
-        if focusClause != nil {
-            // 文節を選び直している途中なら、選び直しを終える（選んだ文節はそのまま）
-            focusClause = nil
-            clauseAlts = []
-            selectedIndex = nil
-            return
-        }
         if selectedIndex != nil {
             // 候補を選んでいる途中なら、選択を解除してひらがなに戻す
             selectedIndex = nil
@@ -677,14 +475,6 @@ final class Composer {
     /// 文節の区切り位置を動かす（空白キー長押しで左右）
     func moveSegment(by count: Int) {
         guard !composing.isEmpty else { return }
-        readingMode = false
-        if liveConversion {
-            refreshIfNeeded()
-            if !liveClauses.isEmpty, liveReading == composing.convertTarget {
-                moveClauseFocus(count)
-                return
-            }
-        }
         let moved = composing.moveCursorFromCursorPosition(count: count)
         // 区切りは1文字以上残す
         if composing.convertTargetCursorPosition == 0 {
@@ -698,19 +488,8 @@ final class Composer {
 
     /// 空白キー：次の候補を選ぶ
     func selectNext() {
-        readingMode = false
         refreshIfNeeded()
         guard displayCount > 0 else { return }
-        if focusClause != nil {
-            _ = chooseClauseAlt(((selectedIndex ?? 0) + 1) % displayCount)
-            return
-        }
-        // ライブ変換では、先頭の候補がもう出ているので、最初の空白で次の候補へ進む
-        if liveConversion, selectedIndex == nil, !liveClauses.isEmpty, displayCount > 1 {
-            // 最初に出ているライブ変換の形が1つ目、空白で2つ目（帯の左から2番目）になる
-            selectedIndex = 1
-            return
-        }
         if let i = selectedIndex {
             selectedIndex = (i + 1) % displayCount
         } else {
@@ -721,7 +500,7 @@ final class Composer {
     /// 候補を確定する。確定した文字を返す。
     func commit(candidateAt index: Int) -> String? {
         if rangeMode { return commitRange(candidateAt: index) }
-        guard focusClause == nil, index < displayCount else { return nil }
+        guard index < displayCount else { return nil }
         guard let ci = candidateIndex(forDisplay: index) else {
             // 打った英字のまま確定する
             let text = extraText(forDisplay: index) ?? composing.convertTarget
@@ -780,7 +559,7 @@ final class Composer {
     func enterRangeMode(candidateAt index: Int) -> Bool {
         // 範囲は「読み」に対して決めるもので、押した候補が変換候補そのものかは関係ない。
         // 先頭に読みそのまま等の追加候補が並ぶ場合に候補対応付けが取れず、入口で無言で失敗していた（v0.37.28）
-        guard focusClause == nil, !composing.isEmpty, index < displayCount else { return false }
+        guard !composing.isEmpty, index < displayCount else { return false }
         rangeLength = composing.convertTarget.count
         rangeMode = true
         selectedIndex = nil
@@ -859,16 +638,8 @@ final class Composer {
 
     /// 選んでいる候補（なければひらがな）で全部確定する
     func commitAll() -> String {
-        if readingMode {
-            let t = composing.convertTarget
-            reset()
-            return t
-        }
         // 候補を選んでいない確定は、読みのままにする。前によく選んだ記号の形が帯の先頭に
         // あっても、勝手にそれで確定しない（「。」を打って確定したら「…」が出た、という報告への対応）
-        if liveUsable, focusClause != nil || selectedIndex == nil {
-            return commitLive()
-        }
         var out = ""
         if let i = selectedIndex, let text = commit(candidateAt: i) {
             out += text
@@ -920,10 +691,6 @@ final class Composer {
         if converterReady { converter.stopComposition() }
         candidates = []
         selectedIndex = nil
-        liveClauses = []
-        liveReading = ""
-        focusClause = nil
-        clauseAlts = []
         exitRangeMode()
         rawRoman = ""
         rawValid = true
@@ -966,64 +733,18 @@ final class Composer {
         lines.append("辞書を直接：\(nodes.count)件 \(words.joined(separator: " "))")
         lines.append(dict.path)
 
-        // AI（Zenzai）：設定、モデルのファイル、いまの文脈、同じ読みをAIありなしで変換した結果
-        lines.append("――AI（Zenzai）――")
-        lines.append("設定：\(zenzai ? "オン" : "オフ")　高精度：\(zenzaiHigh ? "オン" : "オフ")")
-        for m in ["xsmall", "small"] {
-            let u = Bundle.main.bundleURL.appendingPathComponent("Zenz/\(m)/ggml-model-Q5_K_M.gguf")
-            let size = ((try? fm.attributesOfItem(atPath: u.path))?[.size] as? NSNumber)?.intValue ?? -1
-            lines.append("\(m)：\(size < 0 ? "なし" : "\(size / 1_000_000)MB")")
-        }
-        lines.append("いまの文脈：「\(leftContext)」（\(leftContext.count)文字。設定画面を開いているときは空）")
-        if let c = lastZenzContext {
-            lines.append("直近の変換で渡した文脈：「\(c)」（\(c.count)文字）")
-        } else {
-            lines.append("直近の変換で渡した文脈：まだ変換していない")
-        }
         var zt = ComposingText()
         zt.insertAtCursorPosition("かいとう", inputStyle: .direct)
-        let ctx = leftContext.isEmpty ? "冷凍食品の" : leftContext
-        if let url = Self.zenzURL(high: zenzaiHigh) {
-            // 点検の回数（inferenceLimit）と、候補を多く出す設定（rich）を変えて、同じ読みを変換する
-            for (limit, rich) in [(1, false), (3, false), (10, false), (10, true)] {
-                var zo = options
-                zo.zenzaiMode = .on(weight: url, inferenceLimit: limit, requestRichCandidates: rich, personalizationMode: nil,
-                                    versionDependentMode: .v3(.init(leftSideContext: ctx)))
-                let t0 = Date()
-                let on = converter.requestCandidates(zt, options: zo).mainResults.prefix(5).map(\.text)
-                let sec = Date().timeIntervalSince(t0)
-                converter.stopComposition()
-                lines.append("AIあり 回数\(limit)\(rich ? " rich" : "")（\(String(format: "%.2f", sec))秒）：\(on.joined(separator: " / "))")
-            }
-            lines.append("文脈：「\(ctx)」　状態：\(converter.zenzStatus)")
-            // モデルそのものが働いているかの確認：文脈のつづきの1文字を、モデルに直接予想させる
-            var po = options
-            po.zenzaiMode = .on(weight: url, inferenceLimit: 1, personalizationMode: nil,
-                                versionDependentMode: .v3(.init(leftSideContext: ctx)))
-            let nexts = converter.predictNextCharacter(leftSideContext: ctx, count: 6, options: po)
-            lines.append("モデルが予想する「\(ctx)」のつづき：" + (nexts.isEmpty ? "なし（モデルが働いていない）"
-                : nexts.map { "\($0.character)(\(Int($0.value * 100))%)" }.joined(separator: " ")))
-            let nexts2 = converter.predictNextCharacter(leftSideContext: "今日は天気が", count: 6, options: po)
-            lines.append("モデルが予想する「今日は天気が」のつづき：" + (nexts2.isEmpty ? "なし"
-                : nexts2.map { "\($0.character)(\(Int($0.value * 100))%)" }.joined(separator: " ")))
-        } else {
-            lines.append("モデルのファイルが見つからないため、AIは使われていません")
-        }
         let off = converter.requestCandidates(zt, options: options).mainResults.prefix(5).map(\.text)
         converter.stopComposition()
-        lines.append("かいとう（AIなし）：\(off.joined(separator: " / "))")
+        lines.append("かいとう：\(off.joined(separator: " / "))")
 
         // 途中の読みの判定用：候補ごとの点数（value）と長さ。「全」＝読み全体を覆う候補、「予」＝読みの続きを補った予測
-        lines.append("――候補の点数（AIあり／文脈なし）――")
+        lines.append("――候補の点数――")
         for r in ["こんにち", "こんにちは", "かいとう", "とうきょ", "わたしの", "ありがと", "こうりょして", "して", "どうして", "してって"] {
             var ct = ComposingText()
             ct.insertAtCursorPosition(r, inputStyle: .direct)
-            var o = options
-            if let url = Self.zenzURL(high: zenzaiHigh) {
-                o.zenzaiMode = .on(weight: url, inferenceLimit: 10, requestRichCandidates: false, personalizationMode: nil,
-                                   versionDependentMode: .v3(.init(leftSideContext: "")))
-            }
-            let list = converter.requestCandidates(ct, options: o).mainResults.prefix(7)
+            let list = converter.requestCandidates(ct, options: options).mainResults.prefix(7)
             converter.stopComposition()
             let s = list.map { c in
                 "\(c.rubyCount == r.count ? "全" : (c.rubyCount > r.count ? "予" : "短"))\(c.text)(\(String(format: "%.1f", Float(c.value))))"
@@ -1132,14 +853,6 @@ final class Composer {
         guard !front.isEmpty else { return list }
         let used = Set(front.map(\.text))
         let rest = list.filter { !(used.contains($0.text) && readingKey($0) == key) }
-        if zenzai, !leftContext.isEmpty, front.first?.text != top.text {
-            // AIが前の文章を見て選んだ先頭は残し、前に選んだ語はそのすぐ後ろに出す
-            // （前に選んだ語を先頭にすると、文脈に合わない語がいつも先頭に来てしまう）
-            let topKept = front.filter { $0.text == top.text && readingKey($0) == key }
-            let others = front.filter { !($0.text == top.text && readingKey($0) == key) }
-            let head = topKept.isEmpty ? [top] : topKept
-            return head + others + rest.filter { !($0.text == top.text && readingKey($0) == key) }
-        }
         return front + rest
     }
 
@@ -1151,10 +864,7 @@ final class Composer {
     /// 読みが変わったら、後でまとめて変換する（打鍵のたびに変換すると重いため）。
     /// 変換が終わるまでは前の候補を出したままにして、帯がちらつかないようにする。
     private func markDirty() {
-        readingMode = false
         needsRefresh = true
-        focusClause = nil
-        clauseAlts = []
     }
 
     /// 古い候補を押したとき：変換し直して、同じ文字の候補があればその番号を返す
@@ -1176,9 +886,6 @@ final class Composer {
         guard !composing.isEmpty else {
             candidates = []
             extras = []
-            liveClauses = []
-            liveReading = ""
-            focusClause = nil
             if converterReady { converter.stopComposition() }
             return
         }
@@ -1188,46 +895,7 @@ final class Composer {
         var found = converter.requestCandidates(target, options: requestOptions).mainResults
         // 絵文字の候補は出さない（顔文字は、読みから足す処理をやめた）
         found = found.filter { c in !c.text.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x2000) } }
-        if liveConversion || zenzai, !isSegmented {
-            // ライブ変換・AI変換：読み全体の候補を、読みの続きを補った予測より先に並べる（帯の先頭を、下線の文字と同じにする）。
-            // 読みをそのままカタカナ・ひらがなにしただけの候補は、ほかの候補のあとに回す
-            let reading = composing.convertTarget
-            let n = reading.count
-            let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
-            let exact = found.filter { $0.rubyCount == n && !$0.data.isEmpty }
-            // 伸ばす棒（ー）を波線（〜 ～ ~）にしただけの候補（うーん→ウ~ン）も、読みそのままとみなす
-            // 濁点・半濁点をつけただけの形（ヺ、を゛ など）も、読みそのままとみなす
-            func norm(_ t: String) -> String {
-                var v = String.UnicodeScalarView()
-                for u in t.decomposedStringWithCanonicalMapping.unicodeScalars
-                where ![0x3099, 0x309A, 0x309B, 0x309C].contains(u.value) { v.append(u) }
-                return String(String(v).map { "〜～~∼".contains($0) ? "ー" : $0 })
-            }
-            let nk = norm(kata), nr = norm(reading)
-            func isPlain(_ c: Candidate) -> Bool { let t = norm(c.text); return t == nk || t == nr }
-            // 途中の読みで出やすい変な形（今2値、婚E、コン日）：読みに数字・英字がないのに混ざる形と、
-            // 短い読みで、先頭の1〜2文字だけカタカナで残りが漢字の形は、読みそのままの候補と同じく後ろへ回す
-            let readingHasAscii = reading.contains { $0.isASCII && ($0.isLetter || $0.isNumber) }
-            func isOdd(_ c: Candidate) -> Bool {
-                let t = c.text
-                if !readingHasAscii, t.contains(where: { ($0.isASCII || "０１２３４５６７８９ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ".contains($0)) && ($0.isLetter || $0.isNumber) }) { return true }
-                if n <= 6 {
-                    let scalars = Array(t.unicodeScalars)
-                    let kataLen = scalars.prefix { (0x30A1...0x30FA).contains($0.value) }.count
-                    let hasKanji = scalars.contains { (0x4E00...0x9FFF).contains($0.value) }
-                    let hasHira = scalars.contains { (0x3041...0x3096).contains($0.value) }
-                    if kataLen >= 1, kataLen <= 2, hasKanji, !hasHira { return true }
-                }
-                return false
-            }
-            let plain = exact.filter(isPlain)
-            let good = exact.filter { !isPlain($0) && !isOdd($0) }
-            let odd = exact.filter { !isPlain($0) && isOdd($0) }
-            let rest = found.filter { !($0.rubyCount == n && !$0.data.isEmpty) }
-            found = good + plain + odd + rest
-        }
         candidates = prioritizeChosen(found)
-        buildLive()
         // 打ち間違いの候補（「これかな？」）：代わりの読みで点数が大きく上がるものを、3番目に足す
         if typoCorrection, !isSegmented, converterReady {
             let r = composing.convertTarget
