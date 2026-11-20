@@ -1253,6 +1253,16 @@ final class Composer {
             extraAt = 1
             extrasRememberable = true
             for v in list where !have.contains(v) { extras.append(v) }
+        } else if !reading.prefix(while: { $0.isASCII && $0.isNumber }).isEmpty,
+                  !reading.drop(while: { $0.isASCII && $0.isNumber }).isEmpty,
+                  reading.drop(while: { $0.isASCII && $0.isNumber }).allSatisfy({ "、。？！,.?!".contains($0) }) {
+            // 数字＋末尾の記号（例：100、）：記号が付くと数字だけの候補が出なくなり、漢数字に
+            // 変換できなかった。数字部分の候補に記号を付けた形を出す（v0.37.48）
+            let digits = String(reading.prefix(while: { $0.isASCII && $0.isNumber }))
+            let punct = String(reading.drop(while: { $0.isASCII && $0.isNumber }))
+            extraAt = 1
+            extrasRememberable = true
+            for v in Self.numberVariants(digits) where !have.contains(v + punct) && !extras.contains(v + punct) { extras.append(v + punct) }
         } else if reading.allSatisfy({ $0.isASCII && $0.isNumber }) {
             // 数字だけ：全角と漢数字を、先頭の候補のすぐあとに出す
             extraAt = 1

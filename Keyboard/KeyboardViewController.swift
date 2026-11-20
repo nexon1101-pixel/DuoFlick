@@ -393,7 +393,11 @@ final class KeyboardViewController: UIInputViewController {
 
         switch def.action {
         case .kana(let chars):
-            let s = pick(chars, dir)
+            var s = pick(chars, dir)
+            // 数字モード（123のダブルタップで固定）中は、、。？！キーの記号を半角にする（v0.37.48）
+            if def.id == "punct", keyboardView.numberLocked {
+                s = ["、": ",", "。": ".", "？": "?", "！": "!"][s] ?? s
+            }
             // 句読点も読みに含めて、変換は続ける（v0.37.36。v0.37.22〜35 の「句読点で確定」はやめた。
             // 元の問題は「確定で勝手に変換される（。→…）」ことで、それは候補の自動選択をやめた
             // v0.37.23 の直しで解消済み。句読点で変換を終わらせる必要はなかった）
