@@ -114,8 +114,6 @@ final class KeyboardView: UIView {
     var onCursor: ((Int) -> Void)?
     /// 空白キー長押し中の上下移動。負の値で上へ。
     var onCursorVertical: ((Int) -> Void)?
-    /// 空白キーを長押しして、動かさずに離したとき（変換中は、ひらがなにする）
-    var onSpaceHold: (() -> Void)?
     /// 空白キー長押しが始まったとき。変換中は true が返り、その長押しは範囲選択に差し替わる
     var onSpaceRangeBegan: (() -> Bool)?
     /// 範囲選択に差し替わった空白ドラッグ（始点からの横の移動量）
@@ -978,8 +976,6 @@ final class KeyboardView: UIView {
             }
             if a.rangeHold, case .space = a.key.def.action {
                 onSpaceRangeEnded?()
-            } else if a.cursorMode, !a.trackMoved, case .space = a.key.def.action {
-                onSpaceHold?()
             }
             if !a.repeated && !a.flickFired && !a.cursorMode {
                 let end = t.location(in: self)

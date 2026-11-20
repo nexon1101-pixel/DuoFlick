@@ -116,7 +116,6 @@ final class KeyboardViewController: UIInputViewController {
             guard let self, self.model.settings.haptics, self.hasFullAccess else { return }
             self.haptic.impactOccurred()
         }
-        keyboardView.onSpaceHold = { [weak self] in self?.spaceHold() }
         keyboardView.onSpaceRangeBegan = { [weak self] in self?.spaceRangeBegan() ?? false }
         keyboardView.onSpaceRangeDragged = { [weak self] dx in self?.rangePressDragged(dx) }
         keyboardView.onSpaceRangeEnded = { [weak self] in self?.rangePressEnded() }
@@ -126,7 +125,6 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.onRangeBegan = { [weak self] i in self?.rangePressBegan(i) }
         candidateBar.onRangeDragged = { [weak self] dx in self?.rangePressDragged(dx) }
         candidateBar.onRangeEnded = { [weak self] in self?.rangePressEnded() }
-        candidateBar.onReading = { [weak self] in self?.commitReadingAsIs() }
         candidateBar.onExpand = { [weak self] in self?.toggleCandidateList() }
         candidateBar.onSwipeDown = { [weak self] in
             // 帯を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
@@ -825,20 +823,10 @@ final class KeyboardViewController: UIInputViewController {
         return composer.readingChosen(for: text)
     }
 
-    /// 空白キー長押しの左右：入力中なら文節の区切りを動かし、そうでなければカーソルを動かす
-    /// 空白キーを長押しして動かさずに離したとき：変換中なら、ひらがなのまま見せる（改行で確定）
-    /// ※変換中の長押しは範囲選択に差し替わるため（spaceRangeBegan）、ここに来るのは差し替えが
-    /// 成立しなかった場合（文節の選び直し中など）だけ
-    private func spaceHold() {
-        guard register == nil, !composer.isEmpty else { return }
-        composer.showReadingOnly()
-        updateComposition()
-    }
-
     /// 次候補（空白）長押しの差し替え：変換中なら範囲選択に入り、true を返す。
-    /// 変換中以外・登録画面・文節の選び直し中は false を返し、従来のトラックパッドのままにする
+    /// 変換中以外・登録画面は false を返し、従来のトラックパッドのままにする
     private func spaceRangeBegan() -> Bool {
-        guard register == nil, !composer.isEmpty, composer.focusClause == nil else { return false }
+        guard register == nil, !composer.isEmpty else { return false }
         if composer.rangeMode {
             // すでに入っているときは、いまの範囲の長さから伸縮を始める
             rangeStartLength = composer.rangeLength
@@ -962,10 +950,6 @@ final class KeyboardViewController: UIInputViewController {
     /// 入力欄の下線付きの文字と、変換候補の帯を更新する
     private func updateComposition() {
         composer.typoCorrection = model.settings.typoCorrection
-        composer.liveConversion = model.settings.liveConversion
-        composer.zenzai = model.settings.zenzai
-        composer.zenzaiHigh = model.settings.zenzaiHigh
-        updateLeftContext()
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()
@@ -987,29 +971,13 @@ final class KeyboardViewController: UIInputViewController {
 
     /// 打鍵が続いている間は変換を待ち、指が止まったらまとめて変換する
     private var candidateWork: DispatchWorkItem?
-    /// Zenzai に渡す、カーソルより前の文章（入力中の下線の文字は除く）
-    private func updateLeftContext() {
-        guard model.settings.zenzai else { composer.leftContext = ""; return }
-        var before = textDocumentProxy.documentContextBeforeInput ?? ""
-        if markedActive, !shownMarked.isEmpty, before.hasSuffix(shownMarked) { before.removeLast(shownMarked.count) }
-        composer.leftContext = String(before.suffix(20))
-    }
-
     private func scheduleCandidates() {
         candidateWork?.cancel()
         guard composer.needsRefresh else { return }
-        composer.zenzai = model.settings.zenzai
-        composer.zenzaiHigh = model.settings.zenzaiHigh
-        updateLeftContext()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.composer.refreshIfNeeded()
             self.refreshBar()
-            // ライブ変換：変換が済んだら、入力欄の下線の文字を変換した形に入れ替える
-            if self.model.settings.liveConversion, !self.composer.isEmpty, self.markedActive {
-                let t = self.composer.markedText
-                if t != self.shownMarked { self.showMarked(t, highlight: self.composer.markedHighlight) }
-            }
         }
         candidateWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
@@ -1331,8 +1299,7 @@ final class KeyboardViewController: UIInputViewController {
                 // 真ん中を下にフリックしたら、入力中の文字を確定してキーボードを閉じる
                 self?.commitAll()
                 self?.dismissKeyboard()
-            }, onReading: { [weak self] in self?.commitReadingAsIs() },
-               onRangeEnter: { [weak self] i in self?.rangePressBegan(i) },
+            }, onRangeEnter: { [weak self] i in self?.rangePressBegan(i) },
                onRangeDrag: { [weak self] dx in self?.rangePressDragged(dx) },
                onRangeEnded: { [weak self] in self?.rangePressEnded() }))
             host.view.backgroundColor = .clear
@@ -1438,7 +1405,7 @@ final class KeyboardViewController: UIInputViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             if self?.panelModel.suppressSelect == index { self?.panelModel.suppressSelect = nil }
         }
-        guard !composer.isEmpty, composer.focusClause == nil else { return }
+        guard !composer.isEmpty else { return }
         var index = index
         if composer.needsRefresh {
             candidateWork?.cancel()
@@ -1446,7 +1413,7 @@ final class KeyboardViewController: UIInputViewController {
             index = fresh
         }
         guard composer.enterRangeMode(candidateAt: index) else {
-            traceRange("長押し: 範囲に入れなかった（候補番号=\(index) 空=\(composer.isEmpty) 文節選択中=\(composer.focusClause != nil)）")
+            traceRange("長押し: 範囲に入れなかった（候補番号=\(index) 空=\(composer.isEmpty)）")
             return
         }
         traceRange("長押し: 範囲に入った（全体=\(composer.rangeLength)文字）")
@@ -1500,11 +1467,6 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func commitCandidate(_ index: Int) {
-        // ライブ変換で文節を選び直している途中は、確定せず、その文節を入れ替える
-        if composer.chooseClauseAlt(index) {
-            updateComposition()
-            return
-        }
         let reading = composer.reading
         guard let text = composer.commit(candidateAt: index) else { return }
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
@@ -1516,20 +1478,6 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             updateComposition()
         }
-    }
-
-    /// 帯の左端の読みを押したとき：ひらがなのまま確定する（文節を選び直している間は、その文節をひらがなにする）
-    private func commitReadingAsIs() {
-        let reading = composer.reading
-        guard let text = composer.commitReadingAsIs() else {
-            updateComposition()
-            return
-        }
-        keyboardView.resetFlickHistory()
-        insertCommitted(text)
-        lastCommit = (text, reading)
-        refreshBar()
-        schedulePredictions()
     }
 
     private func commitAll() {
@@ -1745,10 +1693,6 @@ final class KeyboardViewController: UIInputViewController {
             onClipboard: { [weak self] in self?.showClipboard() },
             diagnose: { [weak self] in
                 guard let self else { return "" }
-                // 診断の前に、いまの設定と文脈を変換エンジン側へ反映する（変換のときまで反映されないため）
-                self.composer.zenzai = self.model.settings.zenzai
-                self.composer.zenzaiHigh = self.model.settings.zenzaiHigh
-                self.updateLeftContext()
                 var d = self.composer.diagnostics()
                 let lines = self.savedRangeTrace
                 d += "\n— 範囲選択の記録 —\n" + (lines.isEmpty ? "（まだ記録なし）" : lines.joined(separator: "\n"))

@@ -7,13 +7,11 @@ packages:
   AzooKeyKanaKanjiConverter:
     url: https://github.com/azooKey/AzooKeyKanaKanjiConverter
     revision: 3f93209534c148a563d92ef77059953b51777266  # v0.9
-    traits: [Zenzai]   # AIモデル（Zenzai）で変換できるようにする
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    SWIFT_OBJC_INTEROP_MODE: objcxx   # Zenzai（llama.cpp）を使うパッケージが C++ 連携でビルドされるため
-    MARKETING_VERSION: "0.37.48"
-    CURRENT_PROJECT_VERSION: "152"
+    MARKETING_VERSION: "0.37.49"
+    CURRENT_PROJECT_VERSION: "153"
     TARGETED_DEVICE_FAMILY: "1,2"
 targets:
   DuoFlick:
@@ -47,10 +45,8 @@ targets:
     platform: iOS
     sources:
       - path: Keyboard
-        excludes: ["SkkDict/**", "Zenz/**"]
+        excludes: ["SkkDict/**"]
       - path: Keyboard/SkkDict
-        type: folder
-      - path: Keyboard/Zenz
         type: folder
       - Shared
     dependencies:
