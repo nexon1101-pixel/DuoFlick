@@ -12,7 +12,7 @@ enum SharedStore {
               let start = data.range(of: Data("<?xml".utf8)),
               let end = data.range(of: Data("</plist>".utf8)),
               start.lowerBound < end.upperBound,
-              let plist = try? PropertyListSerialization.propertyList(from: data[start.lowerBound..<end.upperBound], options: [], format: nil) as? [String: Any],
+              let plist = try? PropertyListSerialization.propertyList(from: data[start.lowerBound..<end.upperBound], options: 0, format: nil) as? [String: Any],
               let ents = plist["Entitlements"] as? [String: Any],
               let groups = ents["com.apple.security.application-groups"] as? [String]
         else { return nil }
