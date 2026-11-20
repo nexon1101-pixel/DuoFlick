@@ -4,14 +4,15 @@ options:
   deploymentTarget:
     iOS: "17.0"
 packages:
-  AzooKeyKanaKanjiConverter:
-    url: https://github.com/azooKey/AzooKeyKanaKanjiConverter
-    revision: 3f93209534c148a563d92ef77059953b51777266  # v0.9
+  # キーボード本体のパッケージ（このリポジトリの Package.swift）。
+  # 変換エンジンへの依存はパッケージ側が持つ。
+  DuoFlickKeyboardCore:
+    path: .
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.37.49"
-    CURRENT_PROJECT_VERSION: "153"
+    MARKETING_VERSION: "0.37.50"
+    CURRENT_PROJECT_VERSION: "154"
     TARGETED_DEVICE_FAMILY: "1,2"
 targets:
   DuoFlick:
@@ -44,14 +45,11 @@ targets:
     type: app-extension
     platform: iOS
     sources:
-      - path: Keyboard
-        excludes: ["SkkDict/**"]
+      - path: ExtensionHost
       - path: Keyboard/SkkDict
         type: folder
-      - Shared
     dependencies:
-      - package: AzooKeyKanaKanjiConverter
-        product: KanaKanjiConverterModuleWithDefaultDictionary
+      - package: DuoFlickKeyboardCore
     info:
       path: Keyboard/Info.plist
       properties:
@@ -59,7 +57,7 @@ targets:
         ALTAppGroups: [group.jp.wataru.duoflick]
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
-          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).DuoFlickKeyboardHost
           NSExtensionAttributes:
             IsASCIICapable: false
             PrefersRightToLeft: false

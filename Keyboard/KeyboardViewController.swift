@@ -1,7 +1,8 @@
 import UIKit
 import SwiftUI
 
-final class KeyboardViewController: UIInputViewController {
+/// キーボード拡張の本体。各アプリの拡張ターゲット側に薄いサブクラスを置いて入り口にするため open。
+open class KeyboardViewController: UIInputViewController {
     private let model = SettingsModel()
     private let dictionary = UserDictionaryStore()
     private let keyboardView = KeyboardView()
