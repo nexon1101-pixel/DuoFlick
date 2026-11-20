@@ -35,9 +35,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: deriv27-${{ github.run_id }}
+          key: deriv28-${{ github.run_id }}
           restore-keys: |
-            deriv27-
+            deriv28-
 
       - name: Build (unsigned)
         run: |
