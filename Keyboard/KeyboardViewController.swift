@@ -1144,7 +1144,13 @@ open class KeyboardViewController: UIInputViewController {
     /// 下線付きの文字には触らず、確定済みの文字だけを消して入れ直すので、
     /// 重複がはっきり確認できたとき以外は何もしない
     private func scheduleDuplicationRepair(contextBefore: String, markedShown: String, committed: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+        // 最初のチェックは早く（0.05秒）。重複した表示が見える時間を短くするため。
+        // アプリ側の反映が間に合わなかったときのために、0.35秒後にもう一度だけ見る
+        attemptDuplicationRepair(contextBefore: contextBefore, markedShown: markedShown, committed: committed, delay: 0.05, retriesLeft: 1)
+    }
+
+    private func attemptDuplicationRepair(contextBefore: String, markedShown: String, committed: String, delay: TimeInterval, retriesLeft: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.composer.isEmpty, !self.markedActive else { return }
             let p = self.textDocumentProxy
             guard let c1 = p.documentContextBeforeInput else { return }
@@ -1159,7 +1165,13 @@ open class KeyboardViewController: UIInputViewController {
                 broken = contextBefore + markedShown + committed
                 healthy = contextBefore + committed
             }
-            guard c1 == broken, c1 != healthy else { return }
+            if c1 == healthy { return }
+            guard c1 == broken else {
+                if retriesLeft > 0 {
+                    self.attemptDuplicationRepair(contextBefore: contextBefore, markedShown: markedShown, committed: committed, delay: 0.3, retriesLeft: retriesLeft - 1)
+                }
+                return
+            }
             for _ in 0..<(markedShown.count + committed.count) {
                 p.deleteBackward()
             }
