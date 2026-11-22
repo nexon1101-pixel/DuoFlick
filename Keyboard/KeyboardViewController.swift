@@ -943,6 +943,18 @@ open class KeyboardViewController: UIInputViewController {
                 self.contextSeen = true
             }
         }
+        // 文脈が取れない欄で、確定する文字が下線の表示とまったく同じとき（読みのまま
+        // 確定）は、差し替えも「消して入れる」もせず、下線を外すだけにする。欄には
+        // 既にその文字が出ていて、要るのは確定の合図だけ（v0.37.64。空の欄だと文脈が
+        // 取れない素直なアプリでも、この分岐に入って下線が残ることがあった）
+        if composer.isEmpty, hadMarked, !text.isEmpty, contextBefore == nil, text == markedShown {
+            textDocumentProxy.unmarkText()
+            markedActive = false
+            shownMarked = ""
+            deferRemainderMarked = false
+            traceRange("確定: 文脈なし・読みまま確定 読み[\(markedShown)]")
+            return
+        }
         // 文脈が取れない入力欄では、「消して入れる」方式で重複しても読み直して
         // 直すことができない（Immich の検索欄で実機確認、v0.37.60）。そういう欄の
         // 全部確定だけ、下線の中身を差し替えて確定する。文脈が取れる欄は従来どおり
