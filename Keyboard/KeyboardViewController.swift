@@ -926,6 +926,27 @@ open class KeyboardViewController: UIInputViewController {
     /// 部分確定の直後は、残りの下線領域を次のターンに作る（updateComposition で使う）
     private var deferRemainderMarked = false
 
+    /// 文脈が取れない欄で読みのまま確定したあと、下線が残ることがある（v0.37.64/65 で確認）。
+    /// unmark の再送でも消えないので、欄の中身が確定文字と完全一致すると確認できたときだけ、
+    /// その文字を消して入れ直す（v0.37.66）。確認できない欄・状態では何もしない
+    private func scheduleRawCommitSettle(_ text: String, retriesLeft: Int = 1) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, self.composer.isEmpty, !self.markedActive else { return }
+            let p = self.textDocumentProxy
+            let ctx = p.documentContextBeforeInput
+            if ctx == text, (p.selectedText ?? "").isEmpty {
+                for _ in 0..<text.count { p.deleteBackward() }
+                p.insertText(text)
+                self.traceRange("確定後直し: 読みまま確定を入れ直し [\(text)]")
+            } else if retriesLeft > 0 {
+                self.traceRange("確定後観測: 文脈[\(ctx ?? "nil")]（入れ直し見送り・再試行）")
+                self.scheduleRawCommitSettle(text, retriesLeft: retriesLeft - 1)
+            } else {
+                self.traceRange("確定後観測: 文脈[\(ctx ?? "nil")]（入れ直し見送り）")
+            }
+        }
+    }
+
     /// 文脈が取れない欄での確定のあと、欄側の下線表示が古いまま残ることがあるので、
     /// 次のターンでもう一度 unmark して、空の挿入で欄に更新を促す（v0.37.65）。
     /// 次の変換が始まっていたら何もしない
@@ -967,7 +988,7 @@ open class KeyboardViewController: UIInputViewController {
             shownMarked = ""
             deferRemainderMarked = false
             traceRange("確定: 文脈なし・読みまま確定(\(source)) 読み[\(markedShown)] 後文脈[\(textDocumentProxy.documentContextAfterInput ?? "nil")] hasText=\(textDocumentProxy.hasText)")
-            scheduleMarkSettle()
+            scheduleRawCommitSettle(text)
             return
         }
         // 文脈が取れない入力欄では、「消して入れる」方式で重複しても読み直して
