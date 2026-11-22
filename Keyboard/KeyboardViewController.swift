@@ -245,6 +245,7 @@ open class KeyboardViewController: UIInputViewController {
             // 変換待ちのまま送信されたとき：アプリが下線付きの文字ごと入力欄を空にしている。読みと候補を捨てる
             if !self.composer.isEmpty {
                 if self.markedActive, self.markedVisible, before.isEmpty, after.isEmpty, !proxy.hasText {
+                    self.traceRange("見張り: 欄が空になったと判断して変換を破棄 読み[\(self.composer.reading)]")
                     self.composer.reset()
                     self.markedActive = false
                     self.markedVisible = false
@@ -925,8 +926,21 @@ open class KeyboardViewController: UIInputViewController {
     /// 部分確定の直後は、残りの下線領域を次のターンに作る（updateComposition で使う）
     private var deferRemainderMarked = false
 
+    /// 文脈が取れない欄での確定のあと、欄側の下線表示が古いまま残ることがあるので、
+    /// 次のターンでもう一度 unmark して、空の挿入で欄に更新を促す（v0.37.65）。
+    /// 次の変換が始まっていたら何もしない
+    private func scheduleMarkSettle() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, self.composer.isEmpty, !self.markedActive else { return }
+            self.textDocumentProxy.unmarkText()
+            self.textDocumentProxy.insertText("")
+            let p = self.textDocumentProxy
+            self.traceRange("確定後観測: 文脈[\(p.documentContextBeforeInput ?? "nil")] hasText=\(p.hasText) 選択[\(p.selectedText ?? "nil")]")
+        }
+    }
+
     /// 下線付きの文字を、確定した文字で置き換える
-    private func insertCommitted(_ text: String) {
+    private func insertCommitted(_ text: String, source: String = "") {
         // 一部のアプリは insertText での下線付き文字の置き換えをしてくれず、読みを
         // 残したまま確定文字を後ろにくっつける（「せきゅ」＋「セキュリティ」になる）。
         // 置き換えをアプリ任せにせず、下線付きの文字は先にこちらで消してから入れる
@@ -952,7 +966,8 @@ open class KeyboardViewController: UIInputViewController {
             markedActive = false
             shownMarked = ""
             deferRemainderMarked = false
-            traceRange("確定: 文脈なし・読みまま確定 読み[\(markedShown)]")
+            traceRange("確定: 文脈なし・読みまま確定(\(source)) 読み[\(markedShown)] 後文脈[\(textDocumentProxy.documentContextAfterInput ?? "nil")] hasText=\(textDocumentProxy.hasText)")
+            scheduleMarkSettle()
             return
         }
         // 文脈が取れない入力欄では、「消して入れる」方式で重複しても読み直して
@@ -964,7 +979,8 @@ open class KeyboardViewController: UIInputViewController {
             markedActive = false
             shownMarked = ""
             deferRemainderMarked = false
-            traceRange("確定: 文脈なし欄のため差し替え確定 読み[\(markedShown)] 確定[\(text)]")
+            traceRange("確定: 文脈なし欄のため差し替え確定(\(source)) 読み[\(markedShown)] 確定[\(text)]")
+            scheduleMarkSettle()
             return
         }
         if hadMarked, composer.isEmpty {
@@ -1565,7 +1581,7 @@ open class KeyboardViewController: UIInputViewController {
         let reading = composer.reading
         guard let text = composer.commit(candidateAt: index) else { return }
         keyboardView.resetFlickHistory()   // 予測・変換で選んだ文字は、打ったフリックと対応しないので、ずれ補正の対象にしない
-        insertCommitted(text)
+        insertCommitted(text, source: "候補")
         if composer.isEmpty {
             lastCommit = cursorInsidePair ? nil : (text, reading)   // カーソルが括弧の中にあると取り消せないので覚えない
             refreshBar()
@@ -1580,7 +1596,7 @@ open class KeyboardViewController: UIInputViewController {
         let reading = composer.reading
         let text = composer.commitAll()
         keyboardView.resetFlickHistory()
-        insertCommitted(text)
+        insertCommitted(text, source: "確定キー")
         lastCommit = cursorInsidePair ? nil : (text, reading)
         refreshBar()
         schedulePredictions()
