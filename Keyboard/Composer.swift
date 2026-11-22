@@ -169,6 +169,11 @@ final class Composer {
 
     /// 読み全体を覆う候補のうち、読みそのまま（ひらがな・カタカナ）でない最初のもの（AIなし、辞書だけで速く引く）
     private func bestExact(_ reading: String) -> Candidate? {
+        // 前回の変換のラティスを使い回させない。文節・範囲の確定直後のラティスは、
+        // ライブラリ側で prevs と values の数がずれたノードを含むことがあり、
+        // 同じ読みの再リクエスト（キャッシュ復元）で落ちる（2026-11-22 のクラッシュ）。
+        // 打ち間違い探しは毎回まっさらから計算させる
+        converter.stopComposition()
         var ct = ComposingText()
         ct.insertAtCursorPosition(reading, inputStyle: .direct)
         var o = options
