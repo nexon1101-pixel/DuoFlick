@@ -922,6 +922,9 @@ open class KeyboardViewController: UIInputViewController {
         markedActive = false
     }
 
+    /// この変換セッションで部分確定があったか（続きの全部確定のやり方を変えるため）
+    private var hadPartialCommit = false
+
     /// 下線付きの文字を、確定した文字で置き換える
     private func insertCommitted(_ text: String) {
         // 一部のアプリは insertText での下線付き文字の置き換えをしてくれず、読みを
@@ -931,21 +934,7 @@ open class KeyboardViewController: UIInputViewController {
         let hadMarked = markedActive
         let markedShown = shownMarked
         let contextBefore = textDocumentProxy.documentContextBeforeInput
-        if markedActive {
-            clearMarked()
-        }
-        textDocumentProxy.insertText(text)
-        markedActive = false
-        // 全部の確定のときだけ、重複になっていないか少し待ってから確かめる
-        if hadMarked, composer.isEmpty, !markedShown.isEmpty, !text.isEmpty, let contextBefore {
-            scheduleDuplicationRepair(contextBefore: contextBefore, markedShown: markedShown, committed: text)
-        }
-        // 括弧の対だけを確定したときは、中にカーソルを置く（続きの変換が残っているときは動かさない）
         cursorInsidePair = false
-        if composer.isEmpty, text.count == 2, Self.pairTexts.contains(text) {
-            textDocumentProxy.adjustTextPosition(byCharacterOffset: -1)
-            cursorInsidePair = true
-        }
         // この入力欄が文脈を返せるか確かめておく（返せないアプリでは、空になったかどうかを判断しない）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self else { return }
@@ -953,6 +942,42 @@ open class KeyboardViewController: UIInputViewController {
             if !(p.documentContextBeforeInput ?? "").isEmpty || !(p.documentContextAfterInput ?? "").isEmpty {
                 self.contextSeen = true
             }
+        }
+        // 部分変換の続きの全部確定だけ、別のやり方にする（v0.37.58）。
+        // この状態の下線は「消して入れる」方式だと、アプリ側で消去が効かず読みが
+        // そのまま確定されて後ろに候補が付く（2026-11-22 の実機動画で確認）。
+        // 打鍵中の表示更新と同じ「中身のある setMarkedText」で下線の中身を差し替え、
+        // 確定（unmark）だけを次のターンに分ける。差し替えが効かないアプリでは、
+        // 従来の重複直しが拾う
+        if composer.isEmpty, hadPartialCommit, hadMarked, !text.isEmpty {
+            textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
+            shownMarked = text
+            hadPartialCommit = false
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.markedActive, self.composer.isEmpty, self.shownMarked == text else { return }
+                self.textDocumentProxy.unmarkText()
+                self.markedActive = false
+                self.shownMarked = ""
+            }
+            if !markedShown.isEmpty, let contextBefore {
+                scheduleDuplicationRepair(contextBefore: contextBefore, markedShown: markedShown, committed: text)
+            }
+            return
+        }
+        if markedActive {
+            clearMarked()
+        }
+        textDocumentProxy.insertText(text)
+        markedActive = false
+        hadPartialCommit = !composer.isEmpty
+        // 全部の確定のときだけ、重複になっていないか少し待ってから確かめる
+        if hadMarked, composer.isEmpty, !markedShown.isEmpty, !text.isEmpty, let contextBefore {
+            scheduleDuplicationRepair(contextBefore: contextBefore, markedShown: markedShown, committed: text)
+        }
+        // 括弧の対だけを確定したときは、中にカーソルを置く（続きの変換が残っているときは動かさない）
+        if composer.isEmpty, text.count == 2, Self.pairTexts.contains(text) {
+            textDocumentProxy.adjustTextPosition(byCharacterOffset: -1)
+            cursorInsidePair = true
         }
     }
 
@@ -962,6 +987,7 @@ open class KeyboardViewController: UIInputViewController {
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()
+            hadPartialCommit = false
         } else {
             showMarked(composer.markedText, highlight: composer.markedHighlight)
         }
