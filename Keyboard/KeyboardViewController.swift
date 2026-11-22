@@ -943,6 +943,21 @@ open class KeyboardViewController: UIInputViewController {
                 self.contextSeen = true
             }
         }
+        // 文脈が取れない入力欄では、「消して入れる」方式で重複しても読み直して
+        // 直すことができない（Immich の検索欄で実機確認、v0.37.60）。そういう欄の
+        // 全部確定だけ、下線の中身を差し替えて確定する。文脈が取れる欄は従来どおり
+        if composer.isEmpty, hadMarked, !text.isEmpty, contextBefore == nil {
+            textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
+            textDocumentProxy.unmarkText()
+            markedActive = false
+            shownMarked = ""
+            deferRemainderMarked = false
+            traceRange("確定: 文脈なし欄のため差し替え確定 読み[\(markedShown)] 確定[\(text)]")
+            return
+        }
+        if hadMarked, composer.isEmpty {
+            traceRange("確定: 文脈[\(contextBefore ?? "nil")] 読み[\(markedShown)] 確定[\(text)]")
+        }
         if markedActive {
             clearMarked()
         }
@@ -1168,7 +1183,11 @@ open class KeyboardViewController: UIInputViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.composer.isEmpty, !self.markedActive else { return }
             let p = self.textDocumentProxy
-            guard let c1 = p.documentContextBeforeInput else { return }
+            guard let c1 = p.documentContextBeforeInput else {
+                self.traceRange("直し: 確定後の文脈が nil で確認できない")
+                return
+            }
+            self.traceRange("直し: 確定後の文脈[\(c1)]")
             // 正常な確定なら、文脈は「下線ぶんが確定文字に置き換わった形」になる。
             // 重複しているときは、下線ぶんがそのまま残って後ろに確定文字が付いている
             let broken: String
