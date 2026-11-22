@@ -922,8 +922,8 @@ open class KeyboardViewController: UIInputViewController {
         markedActive = false
     }
 
-    /// この変換セッションで部分確定があったか（続きの全部確定のやり方を変えるため）
-    private var hadPartialCommit = false
+    /// 部分確定の直後は、残りの下線領域を次のターンに作る（updateComposition で使う）
+    private var deferRemainderMarked = false
 
     /// 下線付きの文字を、確定した文字で置き換える
     private func insertCommitted(_ text: String) {
@@ -943,33 +943,16 @@ open class KeyboardViewController: UIInputViewController {
                 self.contextSeen = true
             }
         }
-        // 部分変換の続きの全部確定だけ、別のやり方にする（v0.37.58）。
-        // この状態の下線は「消して入れる」方式だと、アプリ側で消去が効かず読みが
-        // そのまま確定されて後ろに候補が付く（2026-11-22 の実機動画で確認）。
-        // 打鍵中の表示更新と同じ「中身のある setMarkedText」で下線の中身を差し替え、
-        // 確定（unmark）だけを次のターンに分ける。差し替えが効かないアプリでは、
-        // 従来の重複直しが拾う
-        if composer.isEmpty, hadPartialCommit, hadMarked, !text.isEmpty {
-            textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
-            shownMarked = text
-            hadPartialCommit = false
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.markedActive, self.composer.isEmpty, self.shownMarked == text else { return }
-                self.textDocumentProxy.unmarkText()
-                self.markedActive = false
-                self.shownMarked = ""
-            }
-            if !markedShown.isEmpty, let contextBefore {
-                scheduleDuplicationRepair(contextBefore: contextBefore, markedShown: markedShown, committed: text)
-            }
-            return
-        }
         if markedActive {
             clearMarked()
         }
         textDocumentProxy.insertText(text)
         markedActive = false
-        hadPartialCommit = !composer.isEmpty
+        // 部分確定のときは、残りの下線領域をこのターンでは作らない（v0.37.59）。
+        // 確定と同じターンに作った下線領域は、一部のアプリで記録がずれたままになり、
+        // 続きの確定で消去が効かなくなる（実機動画で確認）。次のターンに、何もない
+        // 状態から作った領域は正常に扱われるので、作成だけを遅らせる
+        deferRemainderMarked = !composer.isEmpty
         // 全部の確定のときだけ、重複になっていないか少し待ってから確かめる
         if hadMarked, composer.isEmpty, !markedShown.isEmpty, !text.isEmpty, let contextBefore {
             scheduleDuplicationRepair(contextBefore: contextBefore, markedShown: markedShown, committed: text)
@@ -987,7 +970,13 @@ open class KeyboardViewController: UIInputViewController {
         hideCandidateList()
         if composer.isEmpty {
             clearMarked()
-            hadPartialCommit = false
+            deferRemainderMarked = false
+        } else if deferRemainderMarked {
+            deferRemainderMarked = false
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.composer.isEmpty, !self.markedActive else { return }
+                self.showMarked(self.composer.markedText, highlight: self.composer.markedHighlight)
+            }
         } else {
             showMarked(composer.markedText, highlight: composer.markedHighlight)
         }
