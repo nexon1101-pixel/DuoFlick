@@ -925,6 +925,9 @@ open class KeyboardViewController: UIInputViewController {
     /// 部分確定の直後は、残りの下線領域を次のターンに作る（updateComposition で使う）
     private var deferRemainderMarked = false
 
+    /// 文脈が取れない欄で、この変換セッション中に部分確定があったか
+    private var contextlessHadPartial = false
+
     /// 下線付きの文字を、確定した文字で置き換える
     private func insertCommitted(_ text: String) {
         // 一部のアプリは insertText での下線付き文字の置き換えをしてくれず、読みを
@@ -943,16 +946,30 @@ open class KeyboardViewController: UIInputViewController {
                 self.contextSeen = true
             }
         }
-        // 文脈が取れない入力欄では、「消して入れる」方式で重複しても読み直して
-        // 直すことができない（Immich の検索欄で実機確認、v0.37.60）。そういう欄の
-        // 全部確定だけ、下線の中身を差し替えて確定する。文脈が取れる欄は従来どおり
-        if composer.isEmpty, hadMarked, !text.isEmpty, contextBefore == nil {
-            textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
-            textDocumentProxy.unmarkText()
+        // 文脈が取れない入力欄（Immich の検索欄など）では、「消して入れる」方式で
+        // 重複しても読み直して直すことができない（実機動画で確認）。そういう欄では
+        // 確定のやり方自体を切り替える（v0.37.60〜61）。文脈が取れる欄は従来どおり
+        if hadMarked, !text.isEmpty, contextBefore == nil {
+            if composer.isEmpty, !contextlessHadPartial {
+                // 最初の全部確定は、下線の中身を差し替えて確定する（実機で正常を確認）
+                textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: (text as NSString).length, length: 0))
+                textDocumentProxy.unmarkText()
+                traceRange("確定: 文脈なし欄・差し替え確定 読み[\(markedShown)] 確定[\(text)]")
+            } else {
+                // 部分確定と、その続きの全部確定は差し替えが効かない（残りの読みが
+                // 1つ余分に残る）。読みをいったん確定させてから、通常の文字として
+                // 読みのぶんだけ消し、確定文字を入れる
+                textDocumentProxy.unmarkText()
+                for _ in 0..<markedShown.count {
+                    textDocumentProxy.deleteBackward()
+                }
+                textDocumentProxy.insertText(text)
+                traceRange("確定: 文脈なし欄・消して確定 読み[\(markedShown)] 確定[\(text)]")
+            }
             markedActive = false
             shownMarked = ""
-            deferRemainderMarked = false
-            traceRange("確定: 文脈なし欄のため差し替え確定 読み[\(markedShown)] 確定[\(text)]")
+            contextlessHadPartial = !composer.isEmpty
+            deferRemainderMarked = !composer.isEmpty
             return
         }
         if hadMarked, composer.isEmpty {
@@ -986,6 +1003,7 @@ open class KeyboardViewController: UIInputViewController {
         if composer.isEmpty {
             clearMarked()
             deferRemainderMarked = false
+            contextlessHadPartial = false
         } else if deferRemainderMarked {
             deferRemainderMarked = false
             DispatchQueue.main.async { [weak self] in
