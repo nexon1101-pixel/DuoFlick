@@ -170,9 +170,9 @@ final class Composer {
     /// 候補に出さない形かどうか：
     /// ・濁点・半濁点が結合文字（または単独の゛゜）として付いた形（ヲ゚、ぇ゚、を゛ など）。
     ///   正規の濁点つき文字（ヺ、ゔ、ヸ など）は合成済みの1文字なので当てはまらない
-    /// ・（株）で始まる形（（株）〇〇）。本人が不要と言った（2026-11-25）
+    /// ・株式会社系の形（（株）〇〇、株式会社〇〇、〇〇株式会社）。本人が不要と言った（2026-11-25）
     static func isUnwantedCandidate(_ text: String) -> Bool {
-        if text.hasPrefix("（株）") { return true }
+        if text.contains("（株）") || text.contains("株式会社") { return true }
         return text.unicodeScalars.contains { [0x3099, 0x309A, 0x309B, 0x309C].contains($0.value) }
     }
 
