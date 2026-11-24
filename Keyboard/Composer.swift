@@ -167,6 +167,15 @@ final class Composer {
         let base: Float
     }
 
+    /// 候補に出さない形かどうか：
+    /// ・濁点・半濁点が結合文字（または単独の゛゜）として付いた形（ヲ゚、ぇ゚、を゛ など）。
+    ///   正規の濁点つき文字（ヺ、ゔ、ヸ など）は合成済みの1文字なので当てはまらない
+    /// ・（株）で始まる形（（株）〇〇）。本人が不要と言った（2026-11-25）
+    static func isUnwantedCandidate(_ text: String) -> Bool {
+        if text.hasPrefix("（株）") { return true }
+        return text.unicodeScalars.contains { [0x3099, 0x309A, 0x309B, 0x309C].contains($0.value) }
+    }
+
     /// 読み全体を覆う候補のうち、読みそのまま（ひらがな・カタカナ）でない最初のもの（AIなし、辞書だけで速く引く）
     private func bestExact(_ reading: String) -> Candidate? {
         // 前回の変換のラティスを使い回させない。文節・範囲の確定直後のラティスは、
@@ -181,7 +190,7 @@ final class Composer {
         let list = converter.requestCandidates(ct, options: o).mainResults
         let n = reading.count
         let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
-        return list.first { $0.rubyCount == n && !$0.data.isEmpty && $0.text != reading && $0.text != kata }
+        return list.first { $0.rubyCount == n && !$0.data.isEmpty && $0.text != reading && $0.text != kata && !Self.isUnwantedCandidate($0.text) }
     }
 
     /// 1文字だけ打ち間違えたとして、代わりの読みを変換し、元の読みより点数が上がるものを返す（all が true なら、しきい値に関係なく全部）
@@ -602,7 +611,7 @@ final class Composer {
         var list: [Candidate] = []
         var seen = Set<String>()
         for c in converter.requestCandidates(ct, options: o).mainResults
-        where c.rubyCount == n && seen.insert(c.text).inserted {
+        where c.rubyCount == n && seen.insert(c.text).inserted && !Self.isUnwantedCandidate(c.text) {
             list.append(c)
             if list.count >= 40 { break }
         }
@@ -900,6 +909,8 @@ final class Composer {
         var found = converter.requestCandidates(target, options: requestOptions).mainResults
         // 絵文字の候補は出さない（顔文字は、読みから足す処理をやめた）
         found = found.filter { c in !c.text.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x2000) } }
+        // 結合文字の゛゜候補（ヲ゚・ぇ゚等）と（株）で始まる候補は出さない（本人の指示、2026-11-25）
+        found = found.filter { !Self.isUnwantedCandidate($0.text) }
         candidates = prioritizeChosen(found)
         // 打ち間違いの候補（「これかな？」）：代わりの読みで点数が大きく上がるものを、3番目に足す
         if typoCorrection, !isSegmented, converterReady {
