@@ -167,13 +167,18 @@ final class Composer {
         let base: Float
     }
 
-    /// 候補に出さない形かどうか：
-    /// ・濁点・半濁点が結合文字（または単独の゛゜）として付いた形（ヲ゚、ぇ゚、を゛ など）。
-    ///   正規の濁点つき文字（ヺ、ゔ、ヸ など）は合成済みの1文字なので当てはまらない
-    /// ・株式会社系の形（（株）〇〇、株式会社〇〇、〇〇株式会社）。本人が不要と言った（2026-11-25）
+    /// 候補に出さない形かどうか（本人が不要と言ったもの、2026-11-25）：
+    /// ・濁点・半濁点が結合文字（または単独の゛゜）として付いた形（ヲ゚、ぇ゚、を゛ など）
+    /// ・ワ・ヰ・ヱ・ヲに濁点の付いた合成済みの文字（ヷ・ヸ・ヹ・ヺ）。ゔ・ヴ は今どきの
+    ///   書き方でも使うので残す
+    /// ・株式会社系の形（（株）〇〇、〇〇（株）、株式会社〇〇、〇〇株式会社、㈱）。
+    ///   括弧は半角で出てくる候補もあるので、判定の前に全角へ寄せる（花王(株)が実例）
     static func isUnwantedCandidate(_ text: String) -> Bool {
-        if text.contains("（株）") || text.contains("株式会社") { return true }
-        return text.unicodeScalars.contains { [0x3099, 0x309A, 0x309B, 0x309C].contains($0.value) }
+        let parens = text.replacingOccurrences(of: "(", with: "（").replacingOccurrences(of: ")", with: "）")
+        if parens.contains("（株）") || text.contains("㈱") || text.contains("株式会社") { return true }
+        return text.unicodeScalars.contains {
+            [0x3099, 0x309A, 0x309B, 0x309C, 0x30F7, 0x30F8, 0x30F9, 0x30FA].contains($0.value)
+        }
     }
 
     /// 読み全体を覆う候補のうち、読みそのまま（ひらがな・カタカナ）でない最初のもの（AIなし、辞書だけで速く引く）
