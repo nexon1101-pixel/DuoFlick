@@ -167,7 +167,7 @@ final class Composer {
         let base: Float
     }
 
-    /// 候補に出さない形かどうか（本人が不要と言ったもの、2026-11-25）：
+    /// 優先度を落とす形かどうか（消しはせず最後尾へ回す。本人が不要と言ったもの、2026-11-25）：
     /// ・濁点・半濁点が結合文字（または単独の゛゜）として付いた形（ヲ゚、ぇ゚、を゛ など）
     /// ・ワ・ヰ・ヱ・ヲに濁点の付いた合成済みの文字（ヷ・ヸ・ヹ・ヺ）。ゔ・ヴ は今どきの
     ///   書き方でも使うので残す
@@ -207,7 +207,8 @@ final class Composer {
         let list = converter.requestCandidates(ct, options: o).mainResults
         let n = reading.count
         let kata = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
-        return list.first { $0.rubyCount == n && !$0.data.isEmpty && $0.text != reading && $0.text != kata && !Self.isUnwantedCandidate($0.text) }
+        let usable: (Candidate) -> Bool = { $0.rubyCount == n && !$0.data.isEmpty && $0.text != reading && $0.text != kata }
+        return list.first { usable($0) && !Self.isUnwantedCandidate($0.text) } ?? list.first { usable($0) }
     }
 
     /// 1文字だけ打ち間違えたとして、代わりの読みを変換し、元の読みより点数が上がるものを返す（all が true なら、しきい値に関係なく全部）
@@ -626,10 +627,11 @@ final class Composer {
         o.needTypoCorrection = false
         let n = reading.count
         var list: [Candidate] = []
+        var demoted: [Candidate] = []
         var seen = Set<String>()
         for c in converter.requestCandidates(ct, options: o).mainResults
-        where c.rubyCount == n && seen.insert(c.text).inserted && !Self.isUnwantedCandidate(c.text) {
-            list.append(c)
+        where c.rubyCount == n && seen.insert(c.text).inserted {
+            if Self.isUnwantedCandidate(c.text) { demoted.append(c) } else { list.append(c) }
             if list.count >= 40 { break }
         }
         for t in [reading, Self.katakana(reading)] where seen.insert(t).inserted {
@@ -637,6 +639,7 @@ final class Composer {
                                   data: [DicdataElement(word: t, ruby: Self.katakana(reading),
                                                         cid: CIDData.固有名詞.cid, mid: MIDData.一般.mid, value: -20)]))
         }
+        list.append(contentsOf: demoted.prefix(40))
         rangeCandidates = list
         selectedIndex = nil
         // 範囲の後ろは変換せず、読みのまま見せる（「勝手に変換される」と感じさせないため。v0.37.35）
@@ -926,9 +929,13 @@ final class Composer {
         var found = converter.requestCandidates(target, options: requestOptions).mainResults
         // 絵文字の候補は出さない（顔文字は、読みから足す処理をやめた）
         found = found.filter { c in !c.text.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x2000) } }
-        // 結合文字の゛゜候補（ヲ゚・ぇ゚等）と（株）で始まる候補は出さない（本人の指示、2026-11-25）
-        found = found.filter { !Self.isUnwantedCandidate($0.text) }
-        candidates = prioritizeChosen(found)
+        // 要らない候補（ヲ゚・（株）・記号だけ等）は消さず、優先度を落として最後尾へ回す（本人の指示、2026-11-25）
+        var demoted: [Candidate] = []
+        found = found.filter { c in
+            if Self.isUnwantedCandidate(c.text) { demoted.append(c); return false }
+            return true
+        }
+        candidates = prioritizeChosen(found) + demoted
         // 打ち間違いの候補（「これかな？」）：代わりの読みで点数が大きく上がるものを、3番目に足す
         if typoCorrection, !isSegmented, converterReady {
             let r = composing.convertTarget
