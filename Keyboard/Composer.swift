@@ -173,12 +173,24 @@ final class Composer {
     ///   書き方でも使うので残す
     /// ・株式会社系の形（（株）〇〇、〇〇（株）、株式会社〇〇、〇〇株式会社、㈱）。
     ///   括弧は半角で出てくる候補もあるので、判定の前に全角へ寄せる（花王(株)が実例）
+    /// ・ギリシャ文字・キリル文字を含む候補と、記号だけでできた候補（くさい→Ξ・ξ、
+    ///   きごう→記号の山。2026-11-25 の報告）。記号は記号の面から打てるので変換には出さない
     static func isUnwantedCandidate(_ text: String) -> Bool {
         let parens = text.replacingOccurrences(of: "(", with: "（").replacingOccurrences(of: ")", with: "）")
         if parens.contains("（株）") || text.contains("㈱") || text.contains("株式会社") { return true }
-        return text.unicodeScalars.contains {
+        if text.unicodeScalars.contains(where: {
             [0x3099, 0x309A, 0x309B, 0x309C, 0x30F7, 0x30F8, 0x30F9, 0x30FA].contains($0.value)
+                || (0x0370...0x03FF).contains($0.value) || (0x0400...0x04FF).contains($0.value)
+        }) { return true }
+        // かな・漢字・英数字が1文字もない候補は、記号だけの候補として外す
+        let hasUsable = text.unicodeScalars.contains { s in
+            (0x3040...0x30FF).contains(s.value) || (0x3400...0x9FFF).contains(s.value)
+                || (0xFF10...0xFF19).contains(s.value) || (0xFF21...0xFF3A).contains(s.value)
+                || (0xFF41...0xFF5A).contains(s.value) || (0xFF66...0xFF9D).contains(s.value)
+                || (0x30...0x39).contains(s.value) || (0x41...0x5A).contains(s.value)
+                || (0x61...0x7A).contains(s.value) || s.value == 0x3005 || s.value == 0x3007
         }
+        return !text.isEmpty && !hasUsable
     }
 
     /// 読み全体を覆う候補のうち、読みそのまま（ひらがな・カタカナ）でない最初のもの（AIなし、辞書だけで速く引く）
@@ -934,6 +946,10 @@ final class Composer {
             // 今日の日付と今の時刻（変換エンジンの候補にない形だけ足す）
             extraAt = 1
             for v in Self.dateTimeCandidates(for: reading) where !have.contains(v) { extras.append(v) }
+        } else if reading == "きのう" {
+            // 「昨日」が同梱辞書の「きのう」に無く、漢字に変換できなかった（2026-11-25 の報告）
+            extraAt = 1
+            for v in ["昨日"] where !have.contains(v) { extras.append(v) }
         } else if let list = Self.punctuationRuns[reading] {
             extraAt = 1
             extrasRememberable = true
